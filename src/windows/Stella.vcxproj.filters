@@ -55,6 +55,9 @@
     <Filter Include="Source Files\emucore\tia">
       <UniqueIdentifier>{ffa3642d-aa8a-43a5-8ac5-acd8878dd091}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\game">
+      <UniqueIdentifier>{dc626463-ae35-48fb-80fe-b25dac7b276d}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\common\FrameBufferSDL2.cxx">
@@ -890,6 +893,18 @@
     </ClCompile>
     <ClCompile Include="..\gui\Rewinder.cxx">
       <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartStrongArmDev.cxx">
+      <Filter>Source Files\emucore</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1819,6 +1834,24 @@
     </ClInclude>
     <ClInclude Include="..\gui\Rewinder.hxx">
       <Filter>Header Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcs.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcsLib.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartStrongArmDev.hxx">
+      <Filter>Source Files\emucore</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -47,6 +47,7 @@
 
 #include "System.hxx"
 #include "M6502.hxx"
+#include "CartStrongArmDev.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 M6502::M6502(const Settings& settings)
@@ -220,6 +221,8 @@ bool M6502::execute(uInt32 number)
   M6532& riot = mySystem->m6532();
 #endif
 
+ 
+
   // Loop until execution is stopped or a fatal error occurs
   for(;;)
   {
@@ -264,7 +267,20 @@ bool M6502::execute(uInt32 number)
       // Reset the peek/poke address pointers
       myLastPeekAddress = myLastPokeAddress = myDataAddressForPoke = 0;
 
-      icycles = 0;
+		if (PC < 0x80)
+		{
+			int FAILFAIL = 0;
+		}
+		if (PC == 0x80)
+		{
+			int y = 9;
+		}
+		if (PC == 0x1000)
+		{
+			RunStrongArmGame();
+		}
+      
+		icycles = 0;
       // Fetch instruction at the program counter
       IR = peek(PC++, DISASM_CODE);  // This address represents a code section
 

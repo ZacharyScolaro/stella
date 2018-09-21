@@ -110,7 +110,7 @@
     <ClCompile>
       <AdditionalOptions>/MP /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NDEBUG;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -132,6 +132,7 @@
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+      <AdditionalLibraryDirectories>..\SDL2-2.0.7\lib\x86</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -170,7 +171,7 @@
       <AdditionalOptions>/MP /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NDEBUG;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
@@ -192,6 +193,7 @@
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
       <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+      <AdditionalLibraryDirectories>..\SDL2-2.0.7\lib\x86</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -228,6 +230,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.cpp" />
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp" />
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.cpp" />
     <ClCompile Include="..\common\Base.cxx" />
     <ClCompile Include="..\common\EventHandlerSDL2.cxx" />
     <ClCompile Include="..\common\FBSurfaceSDL2.cxx" />
@@ -318,6 +323,7 @@
     <ClCompile Include="..\emucore\CartMDM.cxx" />
     <ClCompile Include="..\emucore\CartMNetwork.cxx" />
     <ClCompile Include="..\emucore\CartE78K.cxx" />
+    <ClCompile Include="..\emucore\CartStrongArmDev.cxx" />
     <ClCompile Include="..\emucore\CartWD.cxx" />
     <ClCompile Include="..\emucore\CompuMate.cxx" />
     <ClCompile Include="..\emucore\EventJoyHandler.cxx" />
@@ -508,6 +514,11 @@
     <ClCompile Include="..\libpng\pngwutil.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcs.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcsLib.h" />
     <ClInclude Include="..\common\Base.hxx" />
     <ClInclude Include="..\common\bspf.hxx" />
     <ClInclude Include="..\common\EventHandlerSDL2.hxx" />
@@ -612,6 +623,7 @@
     <ClInclude Include="..\emucore\CartMDM.hxx" />
     <ClInclude Include="..\emucore\CartMNetwork.hxx" />
     <ClInclude Include="..\emucore\CartE78K.hxx" />
+    <ClInclude Include="..\emucore\CartStrongArmDev.hxx" />
     <ClInclude Include="..\emucore\CartWD.hxx" />
     <ClInclude Include="..\emucore\CompuMate.hxx" />
     <ClInclude Include="..\emucore\EventHandlerConstants.hxx" />
