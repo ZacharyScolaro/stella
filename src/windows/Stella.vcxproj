@@ -110,7 +110,7 @@
     <ClCompile>
       <AdditionalOptions>/MP /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;..\..\..\Strong-ARM-for-VCS\src\displayKernels;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NDEBUG;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -171,7 +171,7 @@
       <AdditionalOptions>/MP /std:c++latest %(AdditionalOptions)</AdditionalOptions>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\SDL2-2.0.7\include;..\yacc;..\emucore;..\emucore\tia;..\emucore\tia\frame-manager;..\common;..\common\tv_filters;..\gui;..\debugger\gui;..\debugger;..\windows;..\cheat;..\zlib;..\libpng;..\..\..\Strong-ARM-for-VCS\src;..\..\..\Strong-ARM-for-VCS\src\displayKernels;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>BSPF_WINDOWS;WIN32;NDEBUG;JOYSTICK_SUPPORT;DEBUGGER_SUPPORT;WINDOWED_SUPPORT;SOUND_SUPPORT;CHEATCODE_SUPPORT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
@@ -230,6 +230,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.cpp" />
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.cpp" />
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp" />
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.cpp" />
@@ -514,6 +515,8 @@
     <ClCompile Include="..\libpng\pngwutil.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.h" />

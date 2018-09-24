@@ -9,7 +9,7 @@ class System;
 #include <thread>
 #include <mutex>
 
-void RunStrongArmGame();
+uInt16 RunStrongArmGame();
 
 class CartStrongArmDev : public Cartridge
 {

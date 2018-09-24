@@ -12,7 +12,9 @@
 
 static std::mutex m;
 static std::condition_variable cv;
+static uInt8 lastReadValue = 0xff;
 static uInt16 nextRomIndex;
+static uInt16 nextJumpTarget;
 static CartStrongArmDev * _cart;
 static bool _runGame;
 static bool _runEmulator;
@@ -24,9 +26,9 @@ static void startGame()
 }
 
 
-void RunStrongArmGame()
+uInt16 RunStrongArmGame()
 {
-	nextRomIndex = 0;
+	nextRomIndex = nextJumpTarget & 0xfff;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
 	_runEmulator = false;
@@ -34,6 +36,7 @@ void RunStrongArmGame()
 	cv.notify_one();
 	cv.wait(lk, [] {return _runEmulator; });
 	lk.unlock();
+	return nextJumpTarget;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -88,6 +91,7 @@ uInt8 CartStrongArmDev::peek(uInt16 address)
 	  value = _romHistory[address & 0x0fff];
   }
   
+  lastReadValue = value;
   return value;
 }
 
@@ -162,8 +166,15 @@ unsigned char vcsRead4(unsigned short address)
 	_cart->_romHistory[nextRomIndex++] = (0xad);
 	_cart->_romHistory[nextRomIndex++] = (address & 0xff);
 	_cart->_romHistory[nextRomIndex++] = (address >> 8);
-	// TODO return SnoopDataBus(address);
-	return 0xff;
+	// Wait until stella has executed the Read
+	nextJumpTarget = 0x1000 | nextRomIndex;
+	std::unique_lock<std::mutex> lk(m);
+	_runGame = false;
+	_runEmulator = true;
+	cv.notify_one();
+	cv.wait(lk, [] {return _runGame; });
+	lk.unlock();
+	return lastReadValue;
 }
 
 
@@ -173,6 +184,7 @@ void vcsJmp3()
 	_cart->_romHistory[nextRomIndex++] = (0x00);
 	_cart->_romHistory[nextRomIndex++] = (0x10);
 	nextRomIndex = 0;
+	nextJumpTarget = 0x1000;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
 	_runGame = false;
@@ -194,6 +206,7 @@ void EndOverblank()
 {
 	_cart->_romHistory[0xfff] = (0x00);
 	nextRomIndex = 0;
+	nextJumpTarget = 0x1000;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
 	_runGame = false;

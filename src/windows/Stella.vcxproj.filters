@@ -58,6 +58,9 @@
     <Filter Include="Source Files\game">
       <UniqueIdentifier>{dc626463-ae35-48fb-80fe-b25dac7b276d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\displayKernels">
+      <UniqueIdentifier>{13dd7596-19d4-4899-bc06-6dcbc391a33c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\common\FrameBufferSDL2.cxx">
@@ -905,6 +908,9 @@
     </ClCompile>
     <ClCompile Include="..\emucore\CartStrongArmDev.cxx">
       <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.cpp">
+      <Filter>Source Files\displayKernels</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1852,6 +1858,12 @@
     </ClInclude>
     <ClInclude Include="..\emucore\CartStrongArmDev.hxx">
       <Filter>Source Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.h">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.h">
+      <Filter>Source Files\displayKernels</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

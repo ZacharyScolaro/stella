@@ -88,6 +88,8 @@ void M6502::install(System& system)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6502::reset()
 {
+	nextJumpTarget = 0x1000;
+
   // Clear the execution status flags
   myExecutionStatus = 0;
 
@@ -271,13 +273,13 @@ bool M6502::execute(uInt32 number)
 		{
 			int FAILFAIL = 0;
 		}
-		if (PC == 0x80)
+		if (PC == 0x107f)
 		{
 			int y = 9;
 		}
-		if (PC == 0x1000)
+		if (PC == nextJumpTarget)
 		{
-			RunStrongArmGame();
+			nextJumpTarget = RunStrongArmGame();
 		}
       
 		icycles = 0;
