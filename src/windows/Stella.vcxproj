@@ -231,9 +231,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.cpp" />
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.cpp" />
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.cpp" />
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.cpp" />
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp" />
-    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.cpp" />
     <ClCompile Include="..\common\Base.cxx" />
     <ClCompile Include="..\common\EventHandlerSDL2.cxx" />
     <ClCompile Include="..\common\FBSurfaceSDL2.cxx" />
@@ -517,9 +518,9 @@
   <ItemGroup>
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.h" />
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h" />
-    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcs.h" />
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcsLib.h" />
     <ClInclude Include="..\common\Base.hxx" />

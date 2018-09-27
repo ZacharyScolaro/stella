@@ -903,13 +903,16 @@
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp">
       <Filter>Source Files\game</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.cpp">
-      <Filter>Source Files\game</Filter>
-    </ClCompile>
     <ClCompile Include="..\emucore\CartStrongArmDev.cxx">
       <Filter>Source Files\emucore</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.cpp">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.cpp">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.cpp">
       <Filter>Source Files\displayKernels</Filter>
     </ClCompile>
   </ItemGroup>
@@ -1847,9 +1850,6 @@
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h">
       <Filter>Source Files\game</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\overblank.h">
-      <Filter>Source Files\game</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcs.h">
       <Filter>Source Files\game</Filter>
     </ClInclude>
@@ -1863,6 +1863,9 @@
       <Filter>Source Files\displayKernels</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.h">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.h">
       <Filter>Source Files\displayKernels</Filter>
     </ClInclude>
   </ItemGroup>
