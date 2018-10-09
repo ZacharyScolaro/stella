@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -18,6 +18,7 @@
 #include <set>
 
 #include "bspf.hxx"
+#include "Bankswitch.hxx"
 #include "OSystem.hxx"
 #include "FSNodeFactory.hxx"
 #include "FSNodeZIP.hxx"
@@ -29,8 +30,6 @@ FilesystemNodeZIP::FilesystemNodeZIP()
     _isDirectory(false),
     _isFile(false)
 {
-  // We need a name, else the node is invalid
-  _realNode = shared_ptr<AbstractFSNode>(nullptr);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -40,14 +39,6 @@ FilesystemNodeZIP::FilesystemNodeZIP(const string& p)
     _isDirectory(false),
     _isFile(false)
 {
-  // Is this a valid file?
-  auto isFile = [](const string& file)
-  {
-    return BSPF::endsWithIgnoreCase(file, ".a26") ||
-           BSPF::endsWithIgnoreCase(file, ".bin") ||
-           BSPF::endsWithIgnoreCase(file, ".rom");
-  };
-
   // Extract ZIP file and virtual file (if specified)
   size_t pos = BSPF::findIgnoreCase(p, ".zip");
   if(pos == string::npos)
@@ -56,8 +47,18 @@ FilesystemNodeZIP::FilesystemNodeZIP(const string& p)
   _zipFile = p.substr(0, pos+4);
 
   // Open file at least once to initialize the virtual file count
-  ZipHandler& zip = open(_zipFile);
-  _numFiles = zip.romFiles();
+  try
+  {
+    myZipHandler->open(_zipFile);
+  }
+  catch(const runtime_error&)
+  {
+    // TODO: Actually present the error passed in back to the user
+    //       For now, we just indicate that no ROMs were found
+    _error = ZIPERR_NO_ROMS;
+    return;
+  }
+  _numFiles = myZipHandler->romFiles();
   if(_numFiles == 0)
   {
     _error = ZIPERR_NO_ROMS;
@@ -69,16 +70,16 @@ FilesystemNodeZIP::FilesystemNodeZIP(const string& p)
   if(pos+5 < p.length())
   {
     _virtualPath = p.substr(pos+5);
-    _isFile = isFile(_virtualPath);
+    _isFile = Bankswitch::isValidRomName(_virtualPath);
     _isDirectory = !_isFile;
   }
   else if(_numFiles == 1)
   {
     bool found = false;
-    while(zip.hasNext() && !found)
+    while(myZipHandler->hasNext() && !found)
     {
-      const string& file = zip.next();
-      if(isFile(file))
+      const string& file = myZipHandler->next();
+      if(Bankswitch::isValidRomName(file))
       {
         _virtualPath = file;
         _isFile = true;
@@ -92,9 +93,7 @@ FilesystemNodeZIP::FilesystemNodeZIP(const string& p)
   else
     _isDirectory = true;
 
-  AbstractFSNode* tmp =
-    FilesystemNodeFactory::create(_zipFile, FilesystemNodeFactory::SYSTEM);
-  _realNode = shared_ptr<AbstractFSNode>(tmp);
+  _realNode = FilesystemNodeFactory::create(_zipFile, FilesystemNodeFactory::SYSTEM);
 
   setFlags(_zipFile, _virtualPath, _realNode);
 }
@@ -102,7 +101,7 @@ FilesystemNodeZIP::FilesystemNodeZIP(const string& p)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FilesystemNodeZIP::FilesystemNodeZIP(
     const string& zipfile, const string& virtualpath,
-    shared_ptr<AbstractFSNode> realnode, bool isdir)
+    AbstractFSNodePtr realnode, bool isdir)
   : _error(ZIPERR_NONE),
     _numFiles(0),
     _isDirectory(isdir),
@@ -114,7 +113,7 @@ FilesystemNodeZIP::FilesystemNodeZIP(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FilesystemNodeZIP::setFlags(const string& zipfile,
                                  const string& virtualpath,
-                                 shared_ptr<AbstractFSNode> realnode)
+                                 AbstractFSNodePtr realnode)
 {
   _zipFile = zipfile;
   _virtualPath = virtualpath;
@@ -147,11 +146,14 @@ bool FilesystemNodeZIP::getChildren(AbstractFSList& myList, ListMode mode,
     return false;
 
   std::set<string> dirs;
-  ZipHandler& zip = open(_zipFile);
-  while(zip.hasNext())
+  myZipHandler->open(_zipFile);
+  while(myZipHandler->hasNext())
   {
     // Only consider entries that start with '_virtualPath'
-    const string& next = zip.next();
+    // Ignore empty filenames and '__MACOSX' virtual directories
+    const string& next = myZipHandler->next();
+    if(BSPF::startsWithIgnoreCase(next, "__MACOSX") || next == EmptyString)
+      continue;
     if(BSPF::startsWithIgnoreCase(next, _virtualPath))
     {
       // First strip off the leading directory
@@ -185,17 +187,17 @@ uInt32 FilesystemNodeZIP::read(BytePtr& image) const
     case ZIPERR_NO_ROMS:      throw runtime_error("ZIP file doesn't contain any ROMs");
   }
 
-  ZipHandler& zip = open(_zipFile);
+  myZipHandler->open(_zipFile);
 
   bool found = false;
-  while(zip.hasNext() && !found)
-    found = zip.next() == _virtualPath;
+  while(myZipHandler->hasNext() && !found)
+    found = myZipHandler->next() == _virtualPath;
 
-  return found ? zip.decompress(image) : 0;
+  return found ? uInt32(myZipHandler->decompress(image)) : 0; // TODO: 64bit
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-AbstractFSNode* FilesystemNodeZIP::getParent() const
+AbstractFSNodePtr FilesystemNodeZIP::getParent() const
 {
   if(_virtualPath == "")
     return _realNode ? _realNode->getParent() : nullptr;
@@ -203,7 +205,7 @@ AbstractFSNode* FilesystemNodeZIP::getParent() const
   const char* start = _path.c_str();
   const char* end = lastPathComponent(_path);
 
-  return new FilesystemNodeZIP(string(start, end - start - 1));
+  return make_shared<FilesystemNodeZIP>(string(start, end - start - 1));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -60,7 +60,7 @@ void FBSurface::readPixels(uInt8* buffer, uInt32 pitch, const GUI::Rect& rect) c
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurface::pixel(uInt32 x, uInt32 y, uInt32 color)
+void FBSurface::pixel(uInt32 x, uInt32 y, ColorId color)
 {
   uInt32* buffer = myPixels + y * myPitch + x;
 
@@ -68,7 +68,7 @@ void FBSurface::pixel(uInt32 x, uInt32 y, uInt32 color)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurface::line(uInt32 x, uInt32 y, uInt32 x2, uInt32 y2, uInt32 color)
+void FBSurface::line(uInt32 x, uInt32 y, uInt32 x2, uInt32 y2, ColorId color)
 {
   // draw line using Bresenham algorithm
   Int32 dx = (x2 - x);
@@ -127,7 +127,7 @@ void FBSurface::line(uInt32 x, uInt32 y, uInt32 x2, uInt32 y2, uInt32 color)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurface::hLine(uInt32 x, uInt32 y, uInt32 x2, uInt32 color)
+void FBSurface::hLine(uInt32 x, uInt32 y, uInt32 x2, ColorId color)
 {
   uInt32* buffer = myPixels + y * myPitch + x;
   while(x++ <= x2)
@@ -135,7 +135,7 @@ void FBSurface::hLine(uInt32 x, uInt32 y, uInt32 x2, uInt32 color)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurface::vLine(uInt32 x, uInt32 y, uInt32 y2, uInt32 color)
+void FBSurface::vLine(uInt32 x, uInt32 y, uInt32 y2, ColorId color)
 {
   uInt32* buffer = static_cast<uInt32*>(myPixels + y * myPitch + x);
   while(y++ <= y2)
@@ -146,7 +146,7 @@ void FBSurface::vLine(uInt32 x, uInt32 y, uInt32 y2, uInt32 color)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurface::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, uInt32 color)
+void FBSurface::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, ColorId color)
 {
   while(h--)
     hLine(x, y+h, x+w-1, color);
@@ -154,8 +154,15 @@ void FBSurface::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, uInt32 color)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::drawChar(const GUI::Font& font, uInt8 chr,
-                         uInt32 tx, uInt32 ty, uInt32 color)
+                         uInt32 tx, uInt32 ty, ColorId color, ColorId shadowColor)
 {
+  if(shadowColor != kNone)
+  {
+    drawChar(font, chr, tx + 1, ty + 0, shadowColor);
+    drawChar(font, chr, tx + 0, ty + 1, shadowColor);
+    drawChar(font, chr, tx + 1, ty + 1, shadowColor);
+  }
+
   const FontDesc& desc = font.desc();
 
   // If this character is not included in the font, use the default char.
@@ -201,14 +208,14 @@ void FBSurface::drawChar(const GUI::Font& font, uInt8 chr,
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::drawBitmap(uInt32* bitmap, uInt32 tx, uInt32 ty,
-                           uInt32 color, uInt32 h)
+                           ColorId color, uInt32 h)
 {
   drawBitmap(bitmap, tx, ty, color, h, h);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::drawBitmap(uInt32* bitmap, uInt32 tx, uInt32 ty,
-                           uInt32 color, uInt32 w, uInt32 h)
+                           ColorId color, uInt32 w, uInt32 h)
 {
   uInt32* buffer = myPixels + ty * myPitch + tx;
 
@@ -234,7 +241,7 @@ void FBSurface::drawPixels(uInt32* data, uInt32 tx, uInt32 ty, uInt32 numpixels)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::box(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
-                    uInt32 colorA, uInt32 colorB)
+                    ColorId colorA, ColorId colorB)
 {
   hLine(x + 1, y,     x + w - 2, colorA);
   hLine(x,     y + 1, x + w - 1, colorA);
@@ -249,7 +256,7 @@ void FBSurface::box(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::frameRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
-                          uInt32 color, FrameStyle style)
+                          ColorId color, FrameStyle style)
 {
   switch(style)
   {
@@ -261,37 +268,16 @@ void FBSurface::frameRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
       break;
 
     case FrameStyle::Dashed:
-      uInt32 i, skip, lwidth = 1;
-
-#ifndef FLAT_UI
-      for(i = x, skip = 1; i < x+w-1; i=i+lwidth+1, ++skip)
-      {
-        if(skip % 2)
-        {
-          hLine(i, y,         i + lwidth, color);
-          hLine(i, y + h - 1, i + lwidth, color);
-        }
-      }
-      for(i = y, skip = 1; i < y+h-1; i=i+lwidth+1, ++skip)
-      {
-        if(skip % 2)
-        {
-          vLine(x,         i, i + lwidth, color);
-          vLine(x + w - 1, i, i + lwidth, color);
-        }
-      }
-#else
-      for(i = x; i < x + w; i += 2)
+      for(uInt32 i = x; i < x + w; i += 2)
       {
         hLine(i, y, i, color);
         hLine(i, y + h - 1, i, color);
       }
-      for(i = y; i < y + h; i += 2)
+      for(uInt32 i = y; i < y + h; i += 2)
       {
         vLine(x, i, i, color);
         vLine(x + w - 1, i, i, color);
       }
-#endif
       break;
   }
 }
@@ -299,8 +285,8 @@ void FBSurface::frameRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurface::drawString(const GUI::Font& font, const string& s,
                            int x, int y, int w,
-                           uInt32 color, TextAlign align,
-                           int deltax, bool useEllipsis)
+                           ColorId color, TextAlign align,
+                           int deltax, bool useEllipsis, ColorId shadowColor)
 {
   const string ELLIPSIS = "\x1d"; // "..."
   const int leftX = x, rightX = x + w;
@@ -313,42 +299,21 @@ void FBSurface::drawString(const GUI::Font& font, const string& s,
     // String is too wide. So we shorten it "intelligently", by replacing
     // parts of it by an ellipsis ("..."). There are three possibilities
     // for this: replace the start, the end, or the middle of the string.
-    // What is best really depends on the context; but unless we want to
-    // make this configurable, replacing the middle probably is a good
-    // compromise.
-    const int ellipsisWidth = font.getStringWidth(ELLIPSIS);
+    // What is best really depends on the context; but most applications
+    // replace the end. So we use that too.
+    int w2 = font.getStringWidth(ELLIPSIS);
 
-    // SLOW algorithm to remove enough of the middle. But it is good enough for now.
-    const int halfWidth = (w - ellipsisWidth) / 2;
-    int w2 = 0;
-
+    // SLOW algorithm to find the acceptable length. But it is good enough for now.
     for(i = 0; i < s.size(); ++i)
     {
       int charWidth = font.getCharWidth(s[i]);
-      if(w2 + charWidth > halfWidth)
+      if(w2 + charWidth > w)
         break;
 
       w2 += charWidth;
       str += s[i];
     }
-
-    // At this point we know that the first 'i' chars are together 'w2'
-    // pixels wide. We took the first i-1, and add "..." to them.
     str += ELLIPSIS;
-
-    // The original string is width wide. Of those we already skipped past
-    // w2 pixels, which means (width - w2) remain.
-    // The new str is (w2+ellipsisWidth) wide, so we can accomodate about
-    // (w - (w2+ellipsisWidth)) more pixels.
-    // Thus we skip ((width - w2) - (w - (w2+ellipsisWidth))) =
-    // (width + ellipsisWidth - w)
-    int skip = width + ellipsisWidth - w;
-    for(; i < s.size() && skip > 0; ++i)
-      skip -= font.getCharWidth(s[i]);
-
-    // Append the remaining chars, if any
-    for(; i < s.size(); ++i)
-      str += s[i];
 
     width = font.getStringWidth(str);
   }
@@ -367,7 +332,7 @@ void FBSurface::drawString(const GUI::Font& font, const string& s,
     if(x+w > rightX)
       break;
     if(x >= leftX)
-      drawChar(font, str[i], x, y, color);
+      drawChar(font, str[i], x, y, color, shadowColor);
 
     x += w;
   }

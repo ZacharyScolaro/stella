@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -27,9 +27,9 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Cartridge::Cartridge(const Settings& settings)
   : mySettings(settings),
-    myStartBank(0),
     myBankChanged(true),
     myCodeAccessBase(nullptr),
+    myStartBank(0),
     myBankLocked(false)
 {
 }
@@ -99,16 +99,24 @@ void Cartridge::initializeRAM(uInt8* arr, uInt32 size, uInt8 val) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool Cartridge::randomInitialRAM() const
+uInt16 Cartridge::initializeStartBank(int defaultBank)
 {
-  return mySettings.getBool(mySettings.getBool("dev.settings") ? "dev.ramrandom" : "plr.ramrandom");
+  int propsBank = myStartBankFromPropsFunc();
+
+  bool userandom = randomStartBank() || (defaultBank < 0 && propsBank < 0);
+
+  if(userandom)
+    return myStartBank = mySystem->randGenerator().next() % bankCount();
+  else if(propsBank >= 0)
+    return myStartBank = BSPF::clamp(propsBank, 0, bankCount() - 1);
+  else
+    return myStartBank = BSPF::clamp(defaultBank, 0, bankCount() - 1);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Cartridge::randomizeStartBank()
+bool Cartridge::randomInitialRAM() const
 {
-  if(randomStartBank())
-    myStartBank = mySystem->randGenerator().next() % bankCount();
+  return mySettings.getBool(mySettings.getBool("dev.settings") ? "dev.ramrandom" : "plr.ramrandom");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -116,4 +124,3 @@ bool Cartridge::randomStartBank() const
 {
   return mySettings.getBool(mySettings.getBool("dev.settings") ? "dev.bankrandom" : "plr.bankrandom");
 }
-

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -22,8 +22,10 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FlashWidget::FlashWidget(GuiObject* boss, const GUI::Font& font,
                          int x, int y, Controller& controller)
-  : ControllerWidget(boss, font, x, y, controller)
+  : ControllerWidget(boss, font, x, y, controller),
+    myEEPROMEraseCurrent(nullptr)
 {
+  std::fill(myPage, myPage + MAX_PAGES, nullptr);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -34,7 +36,7 @@ void FlashWidget::init(GuiObject* boss, const GUI::Font& font, int x, int y)
   int xpos = x, ypos = y;
 
   new StaticTextWidget(boss, font, xpos, ypos + 2, getHeader());
-  
+
   ypos += lineHeight + 6;
 
   new StaticTextWidget(boss, ifont, xpos, ypos, "Pages/Ranges used:");

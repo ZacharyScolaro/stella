@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -16,11 +16,6 @@
 //============================================================================
 
 #include <cassert>
-
-#include <ctime>
-#ifdef HAVE_GETTIMEOFDAY
-  #include <sys/time.h>
-#endif
 
 #include "bspf.hxx"
 
@@ -41,31 +36,41 @@
 #include "CartDetector.hxx"
 #include "FrameBuffer.hxx"
 #include "TIASurface.hxx"
+#include "TIAConstants.hxx"
 #include "Settings.hxx"
 #include "PropsSet.hxx"
 #include "EventHandler.hxx"
 #include "Menu.hxx"
 #include "CommandMenu.hxx"
 #include "Launcher.hxx"
-#include "Rewinder.hxx"
+#include "TimeMachine.hxx"
 #include "PNGLibrary.hxx"
 #include "Widget.hxx"
 #include "Console.hxx"
 #include "Random.hxx"
 #include "SerialPort.hxx"
 #include "StateManager.hxx"
+#include "TimerManager.hxx"
 #include "Version.hxx"
+#include "TIA.hxx"
+#include "DispatchResult.hxx"
+#include "EmulationWorker.hxx"
+#include "AudioSettings.hxx"
 
 #include "OSystem.hxx"
+
+using namespace std::chrono;
+
+namespace {
+  constexpr uInt32 FPS_METER_QUEUE_SIZE = 100;
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 OSystem::OSystem()
   : myLauncherUsed(false),
-    myQuitLoop(false)
+    myQuitLoop(false),
+    myFpsMeter(FPS_METER_QUEUE_SIZE)
 {
-  // Calculate startup time
-  myMillisAtStart = uInt32(time(nullptr) * 1000);
-
   // Get built-in features
   #ifdef SOUND_SUPPORT
     myFeatures += "Sound ";
@@ -91,7 +96,6 @@ OSystem::OSystem()
   myBuildInfo = info.str();
 
   mySettings = MediaFactory::createSettings(*this);
-  myRandom = make_unique<Random>(*this);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -129,20 +133,22 @@ bool OSystem::create()
   myEventHandler = MediaFactory::createEventHandler(*this);
   myEventHandler->initialize();
 
-  // Create a properties set for us to use and set it up
-  myPropSet = make_unique<PropertiesSet>(propertiesFile());
+  // Create the ROM properties database
+  myPropSet = make_unique<PropertiesSet>(myPropertiesFile);
 
 #ifdef CHEATCODE_SUPPORT
   myCheatManager = make_unique<CheatManager>(*this);
   myCheatManager->loadCheatDatabase();
 #endif
 
-  // Create menu and launcher GUI objects
+  // Create various subsystems (menu and launcher GUI objects, etc)
   myMenu = make_unique<Menu>(*this);
   myCommandMenu = make_unique<CommandMenu>(*this);
+  myTimeMachine = make_unique<TimeMachine>(*this);
   myLauncher = make_unique<Launcher>(*this);
-  myRewinder = make_unique<Rewinder>(*this);
   myStateManager = make_unique<StateManager>(*this);
+  myTimerManager = make_unique<TimerManager>();
+  myAudioSettings = make_unique<AudioSettings>(*mySettings);
 
   // Create the sound object; the sound subsystem isn't actually
   // opened until needed, so this is non-blocking (on those systems
@@ -154,11 +160,11 @@ bool OSystem::create()
   // a real serial port on the system
   mySerialPort = MediaFactory::createSerialPort();
 
-  // Re-initialize random seed
-  myRandom->initSeed();
+  // Create random number generator
+  myRandom = make_unique<Random>(uInt32(getTicks()));
 
   // Create PNG handler
-  myPNGLib = make_unique<PNGLibrary>(*myFrameBuffer);
+  myPNGLib = make_unique<PNGLibrary>(*this);
 
   return true;
 }
@@ -234,43 +240,34 @@ void OSystem::setConfigFile(const string& file)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void OSystem::setFramerate(float framerate)
-{
-  if(framerate > 0.0)
-  {
-    myDisplayFrameRate = framerate;
-    myTimePerFrame = uInt32(1000000.0 / myDisplayFrameRate);
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FBInitStatus OSystem::createFrameBuffer()
 {
   // Re-initialize the framebuffer to current settings
   FBInitStatus fbstatus = FBInitStatus::FailComplete;
   switch(myEventHandler->state())
   {
-    case EventHandler::S_EMULATE:
-    case EventHandler::S_PAUSE:
-    case EventHandler::S_MENU:
-    case EventHandler::S_CMDMENU:
+    case EventHandlerState::EMULATION:
+    case EventHandlerState::PAUSE:
+    case EventHandlerState::OPTIONSMENU:
+    case EventHandlerState::CMDMENU:
+    case EventHandlerState::TIMEMACHINE:
       if((fbstatus = myConsole->initializeVideo()) != FBInitStatus::Success)
         return fbstatus;
-      break;  // S_EMULATE, S_PAUSE, S_MENU, S_CMDMENU
+      break;
 
-    case EventHandler::S_LAUNCHER:
+    case EventHandlerState::LAUNCHER:
       if((fbstatus = myLauncher->initializeVideo()) != FBInitStatus::Success)
         return fbstatus;
-      break;  // S_LAUNCHER
+      break;
 
-#ifdef DEBUGGER_SUPPORT
-    case EventHandler::S_DEBUGGER:
+    case EventHandlerState::DEBUGGER:
+  #ifdef DEBUGGER_SUPPORT
       if((fbstatus = myDebugger->initializeVideo()) != FBInitStatus::Success)
         return fbstatus;
-      break;  // S_DEBUGGER
-#endif
+  #endif
+      break;
 
-    default:  // Should never happen
+    case EventHandlerState::NONE:  // Should never happen
       logMessage("ERROR: Unknown emulation state in createFrameBuffer()", 0);
       break;
   }
@@ -281,9 +278,9 @@ FBInitStatus OSystem::createFrameBuffer()
 void OSystem::createSound()
 {
   if(!mySound)
-    mySound = MediaFactory::createAudio(*this);
+    mySound = MediaFactory::createAudio(*this, *myAudioSettings);
 #ifndef SOUND_SUPPORT
-  mySettings->setValue("sound", false);
+  myAudioSettings->setEnabled(false);
 #endif
 }
 
@@ -333,12 +330,12 @@ string OSystem::createConsole(const FilesystemNode& rom, const string& md5sum,
   #ifdef CHEATCODE_SUPPORT
     myCheatManager->loadCheats(myRomMD5);
   #endif
-    myEventHandler->reset(EventHandler::S_EMULATE);
+    myEventHandler->reset(EventHandlerState::EMULATION);
     myEventHandler->setMouseControllerMode(mySettings->getString("usemouse"));
     if(createFrameBuffer() != FBInitStatus::Success)  // Takes care of initializeVideo()
     {
       logMessage("ERROR: Couldn't create framebuffer for console", 0);
-      myEventHandler->reset(EventHandler::S_LAUNCHER);
+      myEventHandler->reset(EventHandlerState::LAUNCHER);
       return "ERROR: Couldn't create framebuffer for console";
     }
     myConsole->initializeAudio();
@@ -354,11 +351,8 @@ string OSystem::createConsole(const FilesystemNode& rom, const string& md5sum,
     }
     buf << "Game console created:" << endl
         << "  ROM file: " << myRomFile.getShortPath() << endl << endl
-        << getROMInfo(*myConsole) << endl;
+        << getROMInfo(*myConsole);
     logMessage(buf.str(), 1);
-
-    // Update the timing info for a new console run
-    resetLoopTiming();
 
     myFrameBuffer->setCursorState();
 
@@ -379,7 +373,7 @@ bool OSystem::reloadConsole()
 bool OSystem::hasConsole() const
 {
   return myConsole != nullptr &&
-         myEventHandler->state() != EventHandler::S_LAUNCHER;
+         myEventHandler->state() != EventHandlerState::LAUNCHER;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -393,14 +387,12 @@ bool OSystem::createLauncher(const string& startdir)
   mySettings->setValue("tmpromdir", startdir);
   bool status = false;
 
-  myEventHandler->reset(EventHandler::S_LAUNCHER);
+  myEventHandler->reset(EventHandlerState::LAUNCHER);
   if(createFrameBuffer() == FBInitStatus::Success)
   {
     myLauncher->reStack();
     myFrameBuffer->setCursorState();
 
-    setFramerate(30);
-    resetLoopTiming();
     status = true;
   }
   else
@@ -446,8 +438,13 @@ void OSystem::logMessage(const string& message, uInt8 level)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-unique_ptr<Console>
-OSystem::openConsole(const FilesystemNode& romfile, string& md5)
+void OSystem::resetFps()
+{
+  myFpsMeter.reset();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+unique_ptr<Console> OSystem::openConsole(const FilesystemNode& romfile, string& md5)
 {
   unique_ptr<Console> console;
 
@@ -461,6 +458,7 @@ OSystem::openConsole(const FilesystemNode& romfile, string& md5)
     Properties props;
     myPropSet->getMD5(md5, props);
 
+    // Local helper method
     auto CMDLINE_PROPS_UPDATE = [&](const string& name, PropertyType prop)
     {
       const string& s = mySettings->getString(name);
@@ -474,7 +472,7 @@ OSystem::openConsole(const FilesystemNode& romfile, string& md5)
     string cartmd5 = md5;
     const string& type = props.get(Cartridge_Type);
     unique_ptr<Cartridge> cart =
-      CartDetector::create(image, size, cartmd5, type, *this);
+      CartDetector::create(romfile, image, size, cartmd5, type, *this);
 
     // It's possible that the cart created was from a piece of the image,
     // and that the md5 (and hence the cart) has changed
@@ -508,7 +506,7 @@ OSystem::openConsole(const FilesystemNode& romfile, string& md5)
 
     // Finally, create the cart with the correct properties
     if(cart)
-      console = make_unique<Console>(*this, cart, props);
+      console = make_unique<Console>(*this, cart, props, *myAudioSettings);
   }
 
   return console;
@@ -571,15 +569,6 @@ string OSystem::getROMInfo(const Console& console)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void OSystem::resetLoopTiming()
-{
-  myTimingInfo.start = myTimingInfo.virt = getTicks();
-  myTimingInfo.current = 0;
-  myTimingInfo.totalTime = 0;
-  myTimingInfo.totalFrames = 0;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OSystem::validatePath(string& path, const string& setting,
                            const string& defaultpath)
 {
@@ -596,68 +585,118 @@ void OSystem::validatePath(string& path, const string& setting,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt64 OSystem::getTicks() const
 {
-#ifdef HAVE_GETTIMEOFDAY
-  // Gettimeofday natively refers to the UNIX epoch (a set time in the past)
-  timeval now;
-  gettimeofday(&now, nullptr);
+  return duration_cast<duration<uInt64, std::ratio<1, 1000000> > >(system_clock::now().time_since_epoch()).count();
+}
 
-  return uInt64(now.tv_sec) * 1000000 + now.tv_usec;
-#else
-  // We use SDL_GetTicks, but add in the time when the application was
-  // initialized.  This is necessary, since SDL_GetTicks only measures how
-  // long SDL has been running, which can be the same between multiple runs
-  // of the application.
-  return uInt64(SDL_GetTicks() + myMillisAtStart) * 1000;
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+float OSystem::frameRate() const
+{
+  return myConsole ? myConsole->getFramerate() : 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+double OSystem::dispatchEmulation(EmulationWorker& emulationWorker)
+{
+  if (!myConsole) return 0.;
+
+  TIA& tia(myConsole->tia());
+  EmulationTiming& timing(myConsole->emulationTiming());
+  DispatchResult dispatchResult;
+
+  // Check whether we have a frame pending for rendering...
+  bool framePending = tia.newFramePending();
+  // ... and copy it to the frame buffer. It is important to do this before
+  // the worker is started to avoid racing.
+  if (framePending) {
+    myFpsMeter.render(tia.framesSinceLastRender());
+    tia.renderToFrameBuffer();
+  }
+
+  // Start emulation on a dedicated thread. It will do its own scheduling to sync 6507 and real time
+  // and will run until we stop the worker.
+  emulationWorker.start(
+    timing.cyclesPerSecond(),
+    timing.maxCyclesPerTimeslice(),
+    timing.minCyclesPerTimeslice(),
+    &dispatchResult,
+    &tia
+  );
+
+  // Render the frame. This may block, but emulation will continue to run on the worker, so the
+  // audio pipeline is kept fed :)
+  if (framePending) myFrameBuffer->updateInEmulationMode(myFpsMeter.fps());
+
+  // Stop the worker and wait until it has finished
+  uInt64 totalCycles = emulationWorker.stop();
+
+#ifdef DEBUGGER_SUPPORT
+  // Break or trap? -> start debugger
+  if (dispatchResult.getStatus() == DispatchResult::Status::debugger) myDebugger->start(
+    dispatchResult.getMessage(),
+    dispatchResult.getAddress(),
+    dispatchResult.wasReadTrap()
+  );
 #endif
+
+  // Handle frying
+  if (dispatchResult.getStatus() == DispatchResult::Status::ok && myEventHandler->frying())
+    myConsole->fry();
+
+  // Return the 6507 time used in seconds
+  return static_cast<double>(totalCycles) / static_cast<double>(timing.cyclesPerSecond());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void OSystem::mainLoop()
 {
-  if(mySettings->getString("timing") == "sleep")
+  // 6507 time
+  time_point<high_resolution_clock> virtualTime = high_resolution_clock::now();
+  // The emulation worker
+  EmulationWorker emulationWorker;
+
+  myFpsMeter.reset(TIAConstants::initialGarbageFrames);
+
+  for(;;)
   {
-    // Sleep-based wait: good for CPU, bad for graphical sync
-    for(;;)
-    {
-      myTimingInfo.start = getTicks();
-      myEventHandler->poll(myTimingInfo.start);
-      if(myQuitLoop) break;  // Exit if the user wants to quit
-      myFrameBuffer->update();
-      myTimingInfo.current = getTicks();
-      myTimingInfo.virt += myTimePerFrame;
+    bool wasEmulation = myEventHandler->state() == EventHandlerState::EMULATION;
 
-      // Timestamps may periodically go out of sync, particularly on systems
-      // that can have 'negative time' (ie, when the time seems to go backwards)
-      // This normally results in having a very large delay time, so we check
-      // for that and reset the timers when appropriate
-      if((myTimingInfo.virt - myTimingInfo.current) > (myTimePerFrame << 1))
-      {
-        myTimingInfo.start = myTimingInfo.current = myTimingInfo.virt = getTicks();
-      }
+    myEventHandler->poll(getTicks());
+    if(myQuitLoop) break;  // Exit if the user wants to quit
 
-      if(myTimingInfo.current < myTimingInfo.virt)
-        SDL_Delay(uInt32(myTimingInfo.virt - myTimingInfo.current) / 1000);
-
-      myTimingInfo.totalTime += (getTicks() - myTimingInfo.start);
-      myTimingInfo.totalFrames++;
+    if (!wasEmulation && myEventHandler->state() == EventHandlerState::EMULATION) {
+      myFpsMeter.reset();
+      virtualTime = high_resolution_clock::now();
     }
-  }
-  else
-  {
-    // Busy-wait: bad for CPU, good for graphical sync
-    for(;;)
-    {
-      myTimingInfo.start = getTicks();
-      myEventHandler->poll(myTimingInfo.start);
-      if(myQuitLoop) break;  // Exit if the user wants to quit
+
+    double timesliceSeconds;
+
+    if (myEventHandler->state() == EventHandlerState::EMULATION)
+      // Dispatch emulation and render frame (if applicable)
+      timesliceSeconds = dispatchEmulation(emulationWorker);
+    else {
+      // Render the GUI with 60 Hz in all other modes
+      timesliceSeconds = 1. / 60.;
       myFrameBuffer->update();
-      myTimingInfo.virt += myTimePerFrame;
+    }
 
-      while(getTicks() < myTimingInfo.virt)
-        ;  // busy-wait
+    duration<double> timeslice(timesliceSeconds);
+    virtualTime += duration_cast<high_resolution_clock::duration>(timeslice);
+    time_point<high_resolution_clock> now = high_resolution_clock::now();
 
-      myTimingInfo.totalTime += (getTicks() - myTimingInfo.start);
-      myTimingInfo.totalFrames++;
+    // We allow 6507 time to lag behind by one frame max
+    double maxLag = myConsole
+      ? (
+        static_cast<double>(myConsole->emulationTiming().cyclesPerFrame()) /
+        static_cast<double>(myConsole->emulationTiming().cyclesPerSecond())
+      )
+      : 0;
+
+    if (duration_cast<duration<double>>(now - virtualTime).count() > maxLag)
+      // If 6507 time is lagging behind more than one frame we reset it to real time
+      virtualTime = now;
+    else if (virtualTime > now) {
+      // Wait until we have caught up with 6507 time
+      std::this_thread::sleep_until(virtualTime);
     }
   }
 

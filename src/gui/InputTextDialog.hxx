@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,9 +30,9 @@ class InputTextDialog : public Dialog, public CommandSender
 {
   public:
     InputTextDialog(GuiObject* boss, const GUI::Font& font,
-                    const StringList& labels);
+                    const StringList& labels, const string& title = "");
     InputTextDialog(GuiObject* boss, const GUI::Font& lfont,
-                    const GUI::Font& nfont, const StringList& labels);
+                    const GUI::Font& nfont, const StringList& labels, const string& title = "");
     virtual ~InputTextDialog() = default;
 
     /** Place the input dialog onscreen and center it */
@@ -47,7 +47,7 @@ class InputTextDialog : public Dialog, public CommandSender
     void setTextFilter(const EditableWidget::TextFilter& f, int idx = 0);
 
     void setEmitSignal(int cmd) { myCmd = cmd; }
-    void setTitle(const string& title);
+    void setMessage(const string& title);
 
     void setFocus(int idx = 0);
 
@@ -61,7 +61,7 @@ class InputTextDialog : public Dialog, public CommandSender
 
   private:
     vector<EditTextWidget*> myInput;
-    StaticTextWidget* myTitle;
+    StaticTextWidget* myMessage;
 
     bool myEnableCenter;
     bool myErrorFlag;

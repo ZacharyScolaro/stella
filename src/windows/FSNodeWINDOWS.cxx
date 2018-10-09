@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -131,7 +131,7 @@ void FilesystemNodeWINDOWS::addFile(AbstractFSList& list, ListMode mode,
   if(!strncmp(asciiName, ".", 1) || !strncmp(asciiName, "..", 2))
     return;
 
-  isDirectory = (find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? true : false);
+  isDirectory = ((find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? true : false);
   isFile = !isDirectory;//(find_data->dwFileAttributes & FILE_ATTRIBUTE_NORMAL ? true : false);
 
   if((isFile && mode == FilesystemNode::kListDirectoriesOnly) ||
@@ -251,12 +251,11 @@ bool FilesystemNodeWINDOWS::
     // Files enumeration
     WIN32_FIND_DATA desc;
     HANDLE handle;
-    char searchPath[MAX_PATH + 10];
 
-    sprintf(searchPath, "%s*", _path.c_str());
+    ostringstream searchPath;
+    searchPath << _path << "*";
 
-    handle = FindFirstFile(toUnicode(searchPath), &desc);
-
+    handle = FindFirstFile(searchPath.str().c_str(), &desc);
     if(handle == INVALID_HANDLE_VALUE)
       return false;
 
@@ -296,7 +295,7 @@ bool FilesystemNodeWINDOWS::rename(const string& newfile)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-AbstractFSNode* FilesystemNodeWINDOWS::getParent() const
+AbstractFSNodePtr FilesystemNodeWINDOWS::getParent() const
 {
   if(_isPseudoRoot)
     return nullptr;
@@ -306,8 +305,8 @@ AbstractFSNode* FilesystemNodeWINDOWS::getParent() const
     const char* start = _path.c_str();
     const char* end = lastPathComponent(_path);
 
-    return new FilesystemNodeWINDOWS(string(start, size_t(end - start)));
+    return make_shared<FilesystemNodeWINDOWS>(string(start, size_t(end - start)));
   }
   else
-    return new FilesystemNodeWINDOWS();
+    return make_shared<FilesystemNodeWINDOWS>();
 }

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,8 +26,9 @@ class Console;
 class Debugger;
 class Launcher;
 class Menu;
-class Rewinder;
+class TimeMachine;
 class FrameBuffer;
+class EventHandler;
 class PNGLibrary;
 class Properties;
 class PropertiesSet;
@@ -36,20 +37,18 @@ class SerialPort;
 class Settings;
 class Sound;
 class StateManager;
+class TimerManager;
 class VideoDialog;
+class EmulationWorker;
+class AudioSettings;
 
-#include "EventHandler.hxx"
+#include <chrono>
+
 #include "FSNode.hxx"
 #include "FrameBufferConstants.hxx"
+#include "EventHandlerConstants.hxx"
+#include "FpsMeter.hxx"
 #include "bspf.hxx"
-
-struct TimingInfo {
-  uInt64 start;
-  uInt64 current;
-  uInt64 virt;
-  uInt64 totalTime;
-  uInt64 totalFrames;
-};
 
 /**
   This class provides an interface for accessing operating system specific
@@ -126,6 +125,13 @@ class OSystem
     bool hasConsole() const;
 
     /**
+      Get the audio settings object of the system.
+
+      @return The audio settings object
+    */
+    AudioSettings& audioSettings() { return *myAudioSettings; }
+
+    /**
       Get the serial port of the system.
 
       @return The serial port object
@@ -154,11 +160,11 @@ class OSystem
     Launcher& launcher() const { return *myLauncher; }
 
     /**
-      Get the state rewinder of the system.
+      Get the time machine of the system (manages state files).
 
-      @return The rewinder object
+      @return The time machine object
     */
-    Rewinder& rewinder() const { return *myRewinder; }
+    TimeMachine& timeMachine() const { return *myTimeMachine; }
 
     /**
       Get the state manager of the system.
@@ -166,6 +172,13 @@ class OSystem
       @return The statemanager object
     */
     StateManager& state() const { return *myStateManager; }
+
+    /**
+      Get the timer/callback manager of the system.
+
+      @return The timermanager object
+    */
+    TimerManager& timer() const { return *myTimerManager; }
 
     /**
       Get the PNG handler of the system.
@@ -207,24 +220,9 @@ class OSystem
 #endif
 
     /**
-      Set the framerate for the video system.  It's placed in this class since
-      the mainLoop() method is defined here.
-
-      @param framerate  The video framerate to use
-    */
-    virtual void setFramerate(float framerate);
-
-    /**
       Set all config file paths for the OSystem.
     */
     void setConfigPaths();
-
-    /**
-      Get the current framerate for the video system.
-
-      @return  The video framerate currently in use
-    */
-    float frameRate() const { return myDisplayFrameRate; }
 
     /**
       Return the default full/complete directory name for storing data.
@@ -275,14 +273,6 @@ class OSystem
       @return String representing the full path of the properties filename.
     */
     const string& paletteFile() const { return myPaletteFile; }
-
-    /**
-      This method should be called to get the full path of the
-      properties file (stella.pro).
-
-      @return String representing the full path of the properties filename.
-    */
-    const string& propertiesFile() const { return myPropertiesFile; }
 
     /**
       This method should be called to get the full path of the currently
@@ -377,10 +367,9 @@ class OSystem
     const string& logMessages() const { return myLogMessages; }
 
     /**
-      Return timing information (start time of console, current
-      number of frames rendered, etc.
-    */
-    const TimingInfo& timingInfo() const { return myTimingInfo; }
+      Reset FPS measurement.
+     */
+    void resetFps();
 
   public:
     //////////////////////////////////////////////////////////////////////
@@ -399,6 +388,8 @@ class OSystem
     */
     virtual uInt64 getTicks() const;
 
+    float frameRate() const;
+
     /**
       This method runs the main loop.  Since different platforms
       may use different timing methods and/or algorithms, this method can
@@ -410,7 +401,7 @@ class OSystem
     /**
       Informs the OSystem of a change in EventHandler state.
     */
-    virtual void stateChanged(EventHandler::State state) { }
+    virtual void stateChanged(EventHandlerState state) { }
 
     /**
       Returns the default save and load paths for various files
@@ -456,6 +447,9 @@ class OSystem
     // Pointer to the (currently defined) Console object
     unique_ptr<Console> myConsole;
 
+    // Pointer to audio settings object
+    unique_ptr<AudioSettings> myAudioSettings;
+
     // Pointer to the serial port object
     unique_ptr<SerialPort> mySerialPort;
 
@@ -469,8 +463,8 @@ class OSystem
     unique_ptr<Launcher> myLauncher;
     bool myLauncherUsed;
 
-    // Pointer to the Rewinder object
-    unique_ptr<Rewinder> myRewinder;
+    // Pointer to the TimeMachine object
+    unique_ptr<TimeMachine> myTimeMachine;
 
   #ifdef DEBUGGER_SUPPORT
     // Pointer to the Debugger object
@@ -485,20 +479,14 @@ class OSystem
     // Pointer to the StateManager object
     unique_ptr<StateManager> myStateManager;
 
+    // Pointer to the TimerManager object
+    unique_ptr<TimerManager> myTimerManager;
+
     // PNG object responsible for loading/saving PNG images
     unique_ptr<PNGLibrary> myPNGLib;
 
     // The list of log messages
     string myLogMessages;
-
-    // Number of times per second to iterate through the main loop
-    float myDisplayFrameRate;
-
-    // Time per frame for a video update, based on the current framerate
-    uInt32 myTimePerFrame;
-
-    // The time (in milliseconds) from the UNIX epoch when the application starts
-    uInt32 myMillisAtStart;
 
     // Indicates whether to stop the main loop
     bool myQuitLoop;
@@ -522,8 +510,7 @@ class OSystem
     string myFeatures;
     string myBuildInfo;
 
-    // Indicates whether the main processing loop should proceed
-    TimingInfo myTimingInfo;
+    FpsMeter myFpsMeter;
 
   private:
     /**
@@ -577,12 +564,6 @@ class OSystem
     string getROMInfo(const Console& console);
 
     /**
-      Initializes the timing so that the mainloop is reset to its
-      initial values.
-    */
-    void resetLoopTiming();
-
-    /**
       Validate the directory name, and create it if necessary.
       Also, update the settings with the new name.  For now, validation
       means that the path must always end with the appropriate separator.
@@ -593,6 +574,8 @@ class OSystem
     */
     void validatePath(string& path, const string& setting,
                       const string& defaultpath);
+
+    double dispatchEmulation(EmulationWorker& emulationWorker);
 
     // Following constructors and assignment operators not supported
     OSystem(const OSystem&) = delete;

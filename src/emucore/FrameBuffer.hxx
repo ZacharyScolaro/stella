@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,11 +30,11 @@ namespace GUI {
   class Font;
 }
 
-#include "EventHandler.hxx"
 #include "Rect.hxx"
 #include "Variant.hxx"
 #include "TIAConstants.hxx"
 #include "FrameBufferConstants.hxx"
+#include "EventHandlerConstants.hxx"
 #include "bspf.hxx"
 
 // Contains all relevant info for the dimensions of a video screen
@@ -100,6 +100,11 @@ class FrameBuffer
     bool initialize();
 
     /**
+      Set palette for user interface
+    */
+    void setUIPalette();
+
+    /**
       (Re)creates the framebuffer display.  This must be called before any
       calls are made to derived methods.
 
@@ -115,7 +120,12 @@ class FrameBuffer
       Updates the display, which depending on the current mode could mean
       drawing the TIA, any pending menus, etc.
     */
-    void update();
+    void update(bool force = false);
+
+    /**
+      There is a dedicated update method for emulation mode.
+     */
+    void updateInEmulationMode(float framesPerSecond);
 
     /**
       Shows a message onscreen.
@@ -192,11 +202,6 @@ class FrameBuffer
     */
     const VariantList& supportedTIAZoomLevels() const { return myTIAZoomLevels; }
 
-    /*
-      Set the current zoom mode.
-    */
-    void setZoomMode(uInt32 mode);
-
     /**
       Get the font object(s) of the framebuffer
     */
@@ -261,13 +266,20 @@ class FrameBuffer
     /**
       Informs the Framebuffer of a change in EventHandler state.
     */
-    void stateChanged(EventHandler::State state);
+    void stateChanged(EventHandlerState state);
 
   //////////////////////////////////////////////////////////////////////
   // The following methods are system-specific and can/must be
   // implemented in derived classes.
   //////////////////////////////////////////////////////////////////////
   public:
+    /**
+      Updates window title
+
+      @param title   The title of the application / window
+    */
+    virtual void setTitle(const string& title) = 0;
+
     /**
       Shows or hides the cursor based on the given boolean value.
     */
@@ -347,8 +359,18 @@ class FrameBuffer
       @param h     The requested height of the new surface.
       @param data  If non-null, use the given data values as a static surface
     */
-    virtual unique_ptr<FBSurface> createSurface(uInt32 w, uInt32 h,
-                                      const uInt32* data) const = 0;
+    virtual unique_ptr<FBSurface>
+        createSurface(uInt32 w, uInt32 h, const uInt32* data) const = 0;
+
+    /**
+      Calls 'free()' on all surfaces that the framebuffer knows about.
+    */
+    void freeSurfaces();
+
+    /**
+      Calls 'reload()' on all surfaces that the framebuffer knows about.
+    */
+    void reloadSurfaces();
 
     /**
       Grabs or ungrabs the mouse based on the given boolean value.
@@ -361,9 +383,10 @@ class FrameBuffer
     virtual void setWindowIcon() = 0;
 
     /**
-      This method is called after any drawing is done (per-frame).
+      This method must be called after all drawing is done, and indicates
+      that the buffers should be pushed to the physical screen.
     */
-    virtual void postFrameUpdate() = 0;
+    virtual void renderToScreen() = 0;
 
     /**
       This method is called to provide information about the FrameBuffer.
@@ -380,12 +403,13 @@ class FrameBuffer
   private:
     /**
       Draw pending messages.
+
+      @return  Indicates whether any changes actually occurred.
     */
-    void drawMessage();
+    bool drawMessage();
 
     /**
-      Issues a 'free' and 'reload' instruction to all surfaces that the
-      framebuffer knows about.
+      Frees and reloads all surfaces that the framebuffer knows about.
     */
     void resetSurfaces();
 
@@ -446,7 +470,14 @@ class FrameBuffer
         int myIdx;
     };
 
+  protected:
+    // Title of the main window/screen
+    string myScreenTitle;
+
   private:
+    // Draws the frame stats overlay
+    void drawFrameStats(float framesPerSecond);
+
     // Indicates the number of times the framebuffer was initialized
     uInt32 myInitializedCount;
 
@@ -459,9 +490,6 @@ class FrameBuffer
 
     // Dimensions of the main window (not always the same as the image)
     GUI::Size myScreenSize;
-
-    // Title of the main window/screen
-    string myScreenTitle;
 
     // Maximum dimensions of the desktop area
     GUI::Size myDesktopSize;
@@ -495,13 +523,18 @@ class FrameBuffer
       int counter;
       int x, y, w, h;
       MessagePosition position;
-      uInt32 color;
+      ColorId color;
       shared_ptr<FBSurface> surface;
       bool enabled;
+
+      Message()
+        : counter(-1), x(0), y(0), w(0), h(0), position(MessagePosition::BottomCenter),
+          color(kNone), enabled(false) { }
     };
     Message myMsg;
     Message myStatsMsg;
     bool myStatsEnabled;
+    uInt32 myLastScanlines;
 
     bool myGrabMouse;
 
@@ -512,9 +545,6 @@ class FrameBuffer
 
     // Names of the TIA zoom levels that can be used for this framebuffer
     VariantList myTIAZoomLevels;
-
-    // curently selected zoom mode
-    uInt32 myZoomMode;
 
     // Holds a reference to all the surfaces that have been created
     vector<shared_ptr<FBSurface>> mySurfaceList;

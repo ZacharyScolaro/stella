@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -92,10 +92,10 @@ void TiaOutputWidget::saveSnapshot(int execDepth, const string& execPrefix)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TiaOutputWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void TiaOutputWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   // Grab right mouse button for command context menu
-  if(button == 2)
+  if(b == MouseButton::RIGHT)
   {
     myClickX = x;
     myClickY = y;
@@ -119,9 +119,10 @@ void TiaOutputWidget::handleCommand(CommandSender* sender, int cmd, int data, in
       if(rmb == "scanline")
       {
         ostringstream command;
-        int lines = myClickY + ystart;
-        if(instance().console().tia().isRendering())
-          lines -= instance().console().tia().scanlines();
+        int lines = myClickY + ystart - instance().console().tia().scanlines();
+
+        if(lines < 0)
+          lines += instance().console().tia().scanlinesLastFrame();
         if(lines > 0)
         {
           command << "scanline #" << lines;
@@ -168,6 +169,8 @@ void TiaOutputWidget::drawWidget(bool hilite)
   uInt32 scanx, scany, scanoffset;
   bool visible = instance().console().tia().electronBeamPos(scanx, scany);
   scanoffset = width * scany + scanx;
+  uInt8* tiaOutputBuffer = instance().console().tia().outputBuffer();
+  TIASurface& tiaSurface(instance().frameBuffer().tiaSurface());
 
   for(uInt32 y = 0, i = 0; y < height; ++y)
   {
@@ -175,18 +178,14 @@ void TiaOutputWidget::drawWidget(bool hilite)
     for(uInt32 x = 0; x < width; ++x, ++i)
     {
       uInt8 shift = i >= scanoffset ? 1 : 0;
-      uInt32 pixel = instance().frameBuffer().tiaSurface().pixel(i, shift);
+      uInt32 pixel = tiaSurface.mapIndexedPixel(tiaOutputBuffer[i], shift);
       *line_ptr++ = pixel;
       *line_ptr++ = pixel;
     }
     s.drawPixels(myLineBuffer, _x + 1, _y + 1 + y, width << 1);
   }
 
-  uInt32 beamColor = kBtnTextColor;
-  if(instance().settings().getString("uipalette") == "light")
-    beamColor = kWidColor;
-
   // Show electron beam position
   if(visible && scanx < width && scany+2u < height)
-    s.fillRect(_x + 1 + (scanx<<1), _y + 1 + scany, 3, 3, beamColor);
+    s.fillRect(_x + 1 + (scanx<<1), _y + 1 + scany, 3, 3, kColorInfo);
 }

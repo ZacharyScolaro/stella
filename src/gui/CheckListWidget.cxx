@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -33,11 +33,10 @@ CheckListWidget::CheckListWidget(GuiObject* boss, const GUI::Font& font,
   _rows = h / _fontHeight;
 
   // Create a CheckboxWidget for each row in the list
-  CheckboxWidget* t = nullptr;
   for(int i = 0; i < _rows; ++i)
   {
-    t = new CheckboxWidget(boss, font, _x + 2, ypos, "",
-                           CheckboxWidget::kCheckActionCmd);
+    CheckboxWidget* t = new CheckboxWidget(boss, font, _x + 2, ypos, "",
+                              CheckboxWidget::kCheckActionCmd);
     t->setTextColor(kTextColor);
     t->setTarget(this);
     t->setID(i);
@@ -45,6 +44,20 @@ CheckListWidget::CheckListWidget(GuiObject* boss, const GUI::Font& font,
 
     _checkList.push_back(t);
   }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void CheckListWidget::handleMouseEntered()
+{
+  setFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void CheckListWidget::handleMouseLeft()
+{
+  clearFlags(WIDGET_HILITED);
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -82,13 +95,11 @@ void CheckListWidget::drawWidget(bool hilite)
 {
 //cerr << "CheckListWidget::drawWidget\n";
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
   int i, pos, len = int(_list.size());
 
   // Draw a thin frame around the list and to separate columns
-  s.hLine(_x, _y, _x + _w - 1, kColor);
-  s.hLine(_x, _y + _h - 1, _x + _w - 1, kShadowColor);
-  s.vLine(_x, _y, _y + _h - 1, kColor);
-
+  s.frameRect(_x, _y, _w, _h, hilite ? kWidColorHi : kColor);
   s.vLine(_x + CheckboxWidget::boxSize() + 5, _y, _y + _h - 1, kColor);
 
   // Draw the list items
@@ -100,7 +111,7 @@ void CheckListWidget::drawWidget(bool hilite)
     _checkList[i]->draw();
 
     const int y = _y + 2 + _fontHeight * i + 2;
-    uInt32 textColor = kTextColor;
+    ColorId textColor = kTextColor;
 
     GUI::Rect r(getEditRect());
 
@@ -115,17 +126,18 @@ void CheckListWidget::drawWidget(bool hilite)
       }
       else
         s.frameRect(_x + r.left - 3, _y + 1 + _fontHeight * i,
-                    _w - r.left, _fontHeight, kTextColorHi);
+                    _w - r.left, _fontHeight, onTop ? kTextColorHi : kColor);
     }
 
     if (_selectedItem == pos && _editMode)
     {
       adjustOffset();
-      s.drawString(_font, editString(), _x + r.left, y, r.width(), kTextColor,
+      s.drawString(_font, editString(), _x + r.left, y, r.width(), onTop ? kTextColor : kColor,
                    TextAlign::Left, -_editScrollOffset, false);
     }
     else
-      s.drawString(_font, _list[pos], _x + r.left, y, r.width(), textColor);
+      s.drawString(_font, _list[pos], _x + r.left, y, r.width(),
+                   onTop ? textColor : kColor);
   }
 
   // Only draw the caret while editing, and if it's in the current viewport
@@ -164,7 +176,7 @@ bool CheckListWidget::handleEvent(Event::Type e)
   {
     case Event::UISelect:
       // Simulate a mouse button click
-      _checkList[ListWidget::getSelected()]->handleMouseUp(0, 0, 1, 0);
+      _checkList[ListWidget::getSelected()]->handleMouseUp(0, 0, MouseButton::LEFT, 0);
       return true;
 
     default:

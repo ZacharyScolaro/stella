@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -37,14 +37,14 @@ class RiotRamWidget : public RamWidget
     virtual ~RiotRamWidget() = default;
 
   private:
-    uInt8 getValue(int addr) const;
-    void setValue(int addr, uInt8 value);
-    string getLabel(int addr) const;
+    uInt8 getValue(int addr) const override;
+    void setValue(int addr, uInt8 value) override;
+    string getLabel(int addr) const override;
 
     void fillList(uInt32 start, uInt32 size, IntArray& alist,
-                  IntArray& vlist, BoolArray& changed) const;
-    uInt32 readPort(uInt32 start) const;
-    const ByteArray& currentRam(uInt32 start) const;
+                  IntArray& vlist, BoolArray& changed) const override;
+    uInt32 readPort(uInt32 start) const override;
+    const ByteArray& currentRam(uInt32 start) const override;
 
   private:
     CartDebug& myDbg;

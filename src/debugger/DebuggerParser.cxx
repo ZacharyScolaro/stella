@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -58,6 +58,7 @@ using std::right;
 DebuggerParser::DebuggerParser(Debugger& d, Settings& s)
   : debugger(d),
     settings(s),
+    myCommand(0),
     argCount(0),
     execDepth(0),
     execPrefix("")
@@ -413,7 +414,7 @@ bool DebuggerParser::validateArgs(int cmd)
   {
     if(required)
     {
-      commandResult.str();
+      void(commandResult.str());
       outputCommandError("missing required argument(s)", cmd);
       return false; // needed args. didn't get 'em.
     }
@@ -425,8 +426,8 @@ bool DebuggerParser::validateArgs(int cmd)
   uInt32 count = 0, argRequiredCount = 0;
   while(*p != kARG_END_ARGS && *p != kARG_MULTI_BYTE)
   {
-    count++;
-    p++;
+    ++count;
+    ++p;
   }
 
   // Evil hack: some commands intentionally take multiple arguments
@@ -499,8 +500,8 @@ bool DebuggerParser::validateArgs(int cmd)
       case kARG_END_ARGS:
         break;
     }
-    curCount++;
-    p++;
+    ++curCount;
+    ++p;
 
   } while(*p != kARG_END_ARGS && curCount < argRequiredCount);
 
@@ -512,13 +513,13 @@ cerr << "curCount         = " << curCount << endl
 
   if(curCount < argRequiredCount)
   {
-    commandResult.str();
+    void(commandResult.str());
     outputCommandError("missing required argument(s)", cmd);
     return false;
   }
   else if(argCount > curCount)
   {
-    commandResult.str();
+    void(commandResult.str());
     outputCommandError("too many arguments", cmd);
     return false;
   }
@@ -570,7 +571,7 @@ void DebuggerParser::listTraps(bool listCond)
   StringList names = debugger.m6502().getCondTrapNames();
 
   commandResult << (listCond ? "trapifs:" : "traps:") << endl;
-  for(uInt32 i = 0; i < names.size(); i++)
+  for(uInt32 i = 0; i < names.size(); ++i)
   {
     bool hasCond = names[i] != "";
     if(hasCond == listCond)
@@ -752,7 +753,7 @@ void DebuggerParser::executeBreakif()
   if(res == 0)
   {
     string condition = argStrings[0];
-    for(uInt32 i = 0; i < debugger.m6502().getCondBreakNames().size(); i++)
+    for(uInt32 i = 0; i < debugger.m6502().getCondBreakNames().size(); ++i)
     {
       if(condition == debugger.m6502().getCondBreakNames()[i])
       {
@@ -1163,9 +1164,9 @@ void DebuggerParser::executeExec()
     prefix << std::hex << std::setw(8) << std::setfill('0') << uInt32(debugger.myOSystem.getTicks()/1000);
     execPrefix = prefix.str();
   }
-  execDepth++;
+  ++execDepth;
   commandResult << exec(node);
-  execDepth--;
+  --execDepth;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1234,10 +1235,10 @@ void DebuggerParser::executeHelp()
   if(argCount == 0)  // normal help, show all commands
   {
     // Find length of longest command
-    uInt16 clen = 0;
+    uInt32 clen = 0;
     for(int i = 0; i < kNumCommands; ++i)
     {
-      uInt16 len = commands[i].cmdString.length();
+      uInt32 len = uInt32(commands[i].cmdString.length());
       if(len > clen)  clen = len;
     }
 
@@ -1418,7 +1419,7 @@ void DebuggerParser::executeListbreaks()
     if(count)
       commandResult << endl;
     commandResult << "breakifs:" << endl;
-    for(uInt32 i = 0; i < conds.size(); i++)
+    for(uInt32 i = 0; i < conds.size(); ++i)
     {
       commandResult << Base::toString(i) << ": " << conds[i];
       if(i != (conds.size() - 1)) commandResult << endl;
@@ -1459,15 +1460,12 @@ void DebuggerParser::executeListfunctions()
 void DebuggerParser::executeListsavestateifs()
 {
   ostringstream buf;
-  int count = 0;
 
   StringList conds = debugger.m6502().getCondSaveStateNames();
   if(conds.size() > 0)
   {
-    if(count)
-      commandResult << endl;
     commandResult << "savestateif:" << endl;
-    for(uInt32 i = 0; i < conds.size(); i++)
+    for(uInt32 i = 0; i < conds.size(); ++i)
     {
       commandResult << Base::toString(i) << ": " << conds[i];
       if(i != (conds.size() - 1)) commandResult << endl;
@@ -1494,7 +1492,7 @@ void DebuggerParser::executeListtraps()
   if (names.size() > 0)
   {
     bool trapFound = false, trapifFound = false;
-    for(uInt32 i = 0; i < names.size(); i++)
+    for(uInt32 i = 0; i < names.size(); ++i)
       if(names[i] == "")
         trapFound = true;
       else
@@ -1786,16 +1784,11 @@ void DebuggerParser::executeSaverom()
 // "saveses"
 void DebuggerParser::executeSaveses()
 {
-  // Create a file named with the current date and time
-  time_t currtime;
-  struct tm* timeinfo;
-  char buffer[80];
-
-  time(&currtime);
-  timeinfo = localtime(&currtime);
-  strftime(buffer, 80, "session_%F_%H-%M-%S.txt", timeinfo);
-
-  FilesystemNode file(debugger.myOSystem.defaultSaveDir() + buffer);
+  ostringstream filename;
+  auto timeinfo = BSPF::localTime();
+  filename << debugger.myOSystem.defaultSaveDir()
+           << std::put_time(&timeinfo, "session_%F_%H-%M-%S.txt");
+  FilesystemNode file(filename.str());
   if(debugger.prompt().saveBuffer(file))
     commandResult << "saved " + file.getShortPath() + " OK";
   else
@@ -1827,7 +1820,7 @@ void DebuggerParser::executeSavestateif()
   if(res == 0)
   {
     string condition = argStrings[0];
-    for(uInt32 i = 0; i < debugger.m6502().getCondSaveStateNames().size(); i++)
+    for(uInt32 i = 0; i < debugger.m6502().getCondSaveStateNames().size(); ++i)
     {
       if(condition == debugger.m6502().getCondSaveStateNames()[i])
       {
@@ -2004,7 +1997,7 @@ void DebuggerParser::executeTraps(bool read, bool write, const string& command,
   {
     // duplicates will remove each other
     bool add = true;
-    for(uInt32 i = 0; i < myTraps.size(); i++)
+    for(uInt32 i = 0; i < myTraps.size(); ++i)
     {
       if(myTraps[i]->begin == begin && myTraps[i]->end == end &&
          myTraps[i]->read == read && myTraps[i]->write == write &&

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -32,18 +32,16 @@ CartridgeCVPlus::CartridgeCVPlus(const BytePtr& image, uInt32 size,
   // Copy the ROM image into my buffer
   memcpy(myImage.get(), image.get(), mySize);
   createCodeAccessBase(mySize + 1024);
-
-  // Remember startup bank
-  myStartBank = 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeCVPlus::reset()
 {
   initializeRAM(myRAM, 1024);
+  initializeStartBank(0);
 
   // We'll map the startup bank into the first segment upon reset
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -79,7 +77,7 @@ void CartridgeCVPlus::install(System& system)
   }
 
   // Install pages for the startup bank into the first segment
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -193,7 +191,6 @@ bool CartridgeCVPlus::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putShort(myCurrentBank);
     out.putByteArray(myRAM, 1024);
   }
@@ -211,9 +208,6 @@ bool CartridgeCVPlus::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myCurrentBank = in.getShort();
     in.getByteArray(myRAM, 1024);
   }

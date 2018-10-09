@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -35,12 +35,12 @@ class ConfigPathDialog : public Dialog, public CommandSender
 {
   public:
     ConfigPathDialog(OSystem& osystem, DialogContainer& parent,
-                     const GUI::Font& font, GuiObject* boss);
+                     const GUI::Font& font, GuiObject* boss, int max_w, int max_h);
     virtual ~ConfigPathDialog();
 
   private:
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
-    void createBrowser();
+    void createBrowser(const string& title);
 
     void loadConfig() override;
     void saveConfig() override;

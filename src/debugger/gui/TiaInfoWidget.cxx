@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -112,7 +112,7 @@ TiaInfoWidget::TiaInfoWidget(GuiObject* boss, const GUI::Font& lfont,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TiaInfoWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void TiaInfoWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
 //cerr << "TiaInfoWidget button press: x = " << x << ", y = " << y << endl;
 }
@@ -127,19 +127,26 @@ void TiaInfoWidget::loadConfig()
 {
   Debugger& dbg = instance().debugger();
   TIADebug& tia = dbg.tiaDebug();
+  const TiaState& oldTia = static_cast<const TiaState&>(tia.getOldState());
 
-  myFrameCount->setText("  " + Common::Base::toString(tia.frameCount(), Common::Base::F_10));
-  myFrameCycles->setText("  " + Common::Base::toString(tia.frameCycles(), Common::Base::F_10));
+  myFrameCount->setText("  " + Common::Base::toString(tia.frameCount(), Common::Base::F_10),
+                        tia.frameCount() != oldTia.info[0]);
+  myFrameCycles->setText("  " + Common::Base::toString(tia.frameCycles(), Common::Base::F_10),
+                         tia.frameCycles() != oldTia.info[1]);
 
-  myVSync->setState(tia.vsync());
-  myVBlank->setState(tia.vblank());
+  myVSync->setState(tia.vsync(), tia.vsyncAsInt() != oldTia.info[2]);
+  myVBlank->setState(tia.vblank(), tia.vblankAsInt() != oldTia.info[3]);
 
   int clk = tia.clocksThisLine();
-  myScanlineCount->setText(
-      Common::Base::toString(tia.scanlines(), Common::Base::F_10));
+  myScanlineCount->setText(Common::Base::toString(tia.scanlines(), Common::Base::F_10),
+                           tia.scanlines() != oldTia.info[4]);
   myScanlineCountLast->setText(
-      Common::Base::toString(tia.scanlinesLastFrame(), Common::Base::F_10));
-  myScanlineCycles->setText(Common::Base::toString(clk/3, Common::Base::F_10));
-  myPixelPosition->setText(Common::Base::toString(clk-68, Common::Base::F_10));
-  myColorClocks->setText(Common::Base::toString(clk, Common::Base::F_10));
+    Common::Base::toString(tia.scanlinesLastFrame(), Common::Base::F_10),
+    tia.scanlinesLastFrame() != oldTia.info[5]);
+  myScanlineCycles->setText(Common::Base::toString(clk/3, Common::Base::F_10),
+                            clk != oldTia.info[6]);
+  myPixelPosition->setText(Common::Base::toString(clk-68, Common::Base::F_10),
+                           clk != oldTia.info[6]);
+  myColorClocks->setText(Common::Base::toString(clk, Common::Base::F_10),
+                         clk != oldTia.info[6]);
 }

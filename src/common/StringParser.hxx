@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -34,7 +34,7 @@ class StringParser
 
       @param str  The string to split
     */
-    StringParser(const string& str)
+    explicit StringParser(const string& str)
     {
       istringstream buf(str);
       string line;
@@ -57,16 +57,17 @@ class StringParser
 
       while(std::getline(buf, line, '\n'))
       {
-        size_t beg = 0, len = maxlen, size = line.size();
+        size_t len = maxlen, size = line.size();
 
         if(size <= len)
           myStringList.push_back(line);
         else
         {
-          while((beg+maxlen) < size)
+          size_t beg = 0;
+          while((beg + maxlen) < size)
           {
-            size_t spos = line.find_last_of(' ', beg+len);
-            if(spos > beg)
+            size_t spos = line.find_last_of(' ', beg + len);
+            if(spos != string::npos && spos > beg)
               len = spos - beg;
 
             myStringList.push_back(line.substr(beg, len));

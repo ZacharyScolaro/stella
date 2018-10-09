@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -47,7 +47,7 @@ class TIASurface
     /**
       Creates a new TIASurface object
     */
-    TIASurface(OSystem& system);
+    explicit TIASurface(OSystem& system);
 
     /**
       Set the TIA object, which is needed for actually rendering the TIA image.
@@ -73,10 +73,9 @@ class TIASurface
     const FBSurface& baseSurface(GUI::Rect& rect) const;
 
     /**
-      Get the TIA pixel associated with the given TIA buffer index,
-      shifting by the given offset (for greyscale values).
-    */
-    uInt32 pixel(uInt32 idx, uInt8 shift = 0);
+      Use the palette to map a single indexed pixel color. This is used by the TIA output widget.
+     */
+    uInt32 mapIndexedPixel(uInt8 indexedColor, uInt8 shift = 0);
 
     /**
       Get the NTSCFilter object associated with the framebuffer

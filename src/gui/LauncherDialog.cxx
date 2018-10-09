@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -16,6 +16,7 @@
 //============================================================================
 
 #include "bspf.hxx"
+#include "Bankswitch.hxx"
 #include "BrowserDialog.hxx"
 #include "ContextMenu.hxx"
 #include "DialogContainer.hxx"
@@ -26,10 +27,11 @@
 #include "MD5.hxx"
 #include "OptionsDialog.hxx"
 #include "GlobalPropsDialog.hxx"
-#include "LauncherFilterDialog.hxx"
 #include "MessageBox.hxx"
 #include "OSystem.hxx"
 #include "FrameBuffer.hxx"
+#include "EventHandler.hxx"
+#include "StellaKeys.hxx"
 #include "Props.hxx"
 #include "PropsSet.hxx"
 #include "RomInfoWidget.hxx"
@@ -54,19 +56,21 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
 {
   const GUI::Font& font = instance().frameBuffer().launcherFont();
 
+  const int HBORDER = 10;
+  const int BUTTON_GAP = 8;
   const int fontWidth = font.getMaxCharWidth(),
             fontHeight = font.getFontHeight(),
             lineHeight = font.getLineHeight(),
-            bwidth  = (_w - 2 * 10 - 8 * (4 - 1)) / 4,
-            bheight = font.getLineHeight() + 4;
-  int xpos = 0, ypos = 0, lwidth = 0, lwidth2 = 0;
+            bwidth  = (_w - 2 * HBORDER - BUTTON_GAP * (4 - 1)),
+            bheight = lineHeight + 4;
+  int xpos, ypos = 0, lwidth = 0, lwidth2 = 0;
   WidgetArray wid;
 
   // Show game name
-  lwidth = font.getStringWidth("Select an item from the list ...");
-  xpos += 10;  ypos += 8;
+  lwidth = font.getStringWidth("Select a ROM from the list" + ELLIPSIS);
+  xpos = HBORDER;  ypos += 8;
   new StaticTextWidget(this, font, xpos, ypos, lwidth, fontHeight,
-                       "Select an item from the list ...", TextAlign::Left);
+                       "Select a ROM from the list" + ELLIPSIS);
 
   lwidth2 = font.getStringWidth("XXXX items found");
   xpos = _w - lwidth2 - 10;
@@ -79,14 +83,17 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
   if(w >= 640)
   {
     int fwidth = std::min(15 * fontWidth, xpos - 20 - lwidth);
+
+    new StaticTextWidget(this, font, xpos - fwidth - 5 - font.getStringWidth("Filter "),
+                         ypos, "Filter ");
     xpos -= fwidth + 5;
-    myPattern = new EditTextWidget(this, font, xpos, ypos,
-                                   fwidth, fontHeight, "");
+    myPattern = new EditTextWidget(this, font, xpos, ypos - 2,
+                                   fwidth, lineHeight, "");
   }
 
   // Add list with game titles
   // Before we add the list, we need to know the size of the RomInfoWidget
-  xpos = 10;  ypos += fontHeight + 5;
+  xpos = 10;  ypos += lineHeight + 4;
   int romWidth = 0;
   int romSize = instance().settings().getInt("romviewer");
   if(romSize > 1 && w >= 1000 && h >= 760)
@@ -94,9 +101,9 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
   else if(romSize > 0 && w >= 640 && h >= 480)
     romWidth = 365;
 
-  int listWidth = _w - (romWidth > 0 ? romWidth+5 : 0) - 20;
+  int listWidth = _w - (romWidth > 0 ? romWidth+8 : 0) - 20;
   myList = new StringListWidget(this, font, xpos, ypos,
-                                listWidth, _h - 35 - bheight - 2*fontHeight);
+                                listWidth, _h - 43 - bheight - fontHeight - lineHeight);
   myList->setEditable(false);
   wid.push_back(myList);
   if(myPattern)  wid.push_back(myPattern);  // Add after the list for tab order
@@ -104,7 +111,7 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
   // Add ROM info area (if enabled)
   if(romWidth > 0)
   {
-    xpos += myList->getWidth() + 5;
+    xpos += myList->getWidth() + 8;
     myRomInfoWidget = new RomInfoWidget(this,
         romWidth < 660 ? instance().frameBuffer().smallFont() :
                          instance().frameBuffer().infoFont(),
@@ -113,47 +120,47 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
 
   // Add textfield to show current directory
   xpos = 10;
-  xpos += 5;  ypos += myList->getHeight() + 4;
-  lwidth = font.getStringWidth("Dir ");
+  ypos += myList->getHeight() + 8;
+  lwidth = font.getStringWidth("Path ");
   myDirLabel = new StaticTextWidget(this, font, xpos, ypos+2, lwidth, fontHeight,
-                                    "Dir", TextAlign::Left);
-  xpos += lwidth + 5;
+                                    "Path", TextAlign::Left);
+  xpos += lwidth;
   myDir = new EditTextWidget(this, font, xpos, ypos, _w - xpos - 10, lineHeight, "");
   myDir->setEditable(false, true);
   myDir->clearFlags(WIDGET_RETAIN_FOCUS);
 
   // Add four buttons at the bottom
-  xpos = 10;  ypos += myDir->getHeight() + 4;
+  xpos = 10;  ypos += myDir->getHeight() + 8;
 #ifndef BSPF_MAC_OSX
-  myStartButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+  myStartButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 0) / 4, bheight,
                                   "Select", kLoadROMCmd);
   wid.push_back(myStartButton);
-    xpos += bwidth + 8;
-  myPrevDirButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
-                                      "Go Up", kPrevDirCmd);
+    xpos += (bwidth + 0) / 4 + BUTTON_GAP;
+  myPrevDirButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 1) / 4, bheight,
+                                     "Go Up", kPrevDirCmd);
   wid.push_back(myPrevDirButton);
-    xpos += bwidth + 8;
-    myOptionsButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+    xpos += (bwidth + 1) / 4 + BUTTON_GAP;
+    myOptionsButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 2) / 4, bheight,
                                        "Options" + ELLIPSIS, kOptionsCmd);
   wid.push_back(myOptionsButton);
-    xpos += bwidth + 8;
-  myQuitButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+    xpos += (bwidth + 2) / 4 + BUTTON_GAP;
+  myQuitButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 3) / 4, bheight,
                                   "Quit", kQuitCmd);
   wid.push_back(myQuitButton);
 #else
-  myQuitButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+  myQuitButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 0) / 4, bheight,
                                   "Quit", kQuitCmd);
   wid.push_back(myQuitButton);
-    xpos += bwidth + 8;
-  myOptionsButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+    xpos += (bwidth + 0) / 4 + BUTTON_GAP;
+  myOptionsButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 1) / 4, bheight,
                                      "Options" + ELLIPSIS, kOptionsCmd);
   wid.push_back(myOptionsButton);
-    xpos += bwidth + 8;
-  myPrevDirButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+    xpos += (bwidth + 1) / 4 + BUTTON_GAP;
+  myPrevDirButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 2) / 4, bheight,
                                       "Go Up", kPrevDirCmd);
   wid.push_back(myPrevDirButton);
-    xpos += bwidth + 8;
-  myStartButton = new ButtonWidget(this, font, xpos, ypos, bwidth, bheight,
+    xpos += (bwidth + 2) / 4 + BUTTON_GAP;
+  myStartButton = new ButtonWidget(this, font, xpos, ypos, (bwidth + 3) / 4, bheight,
                                    "Select", kLoadROMCmd);
   wid.push_back(myStartButton);
 #endif
@@ -171,7 +178,8 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
   // Create context menu for ROM list options
   VariantList l;
   VarList::push_back(l, "Power-on options" + ELLIPSIS, "override");
-  VarList::push_back(l, "Filter listing" + ELLIPSIS, "filter");
+  VarList::push_back(l, "Show only ROM files", "roms");
+  VarList::push_back(l, "Show all files", "allfiles");
   VarList::push_back(l, "Reload listing", "reload");
   myMenu = make_unique<ContextMenu>(this, osystem.frameBuffer().font(), l);
 
@@ -179,11 +187,8 @@ LauncherDialog::LauncherDialog(OSystem& osystem, DialogContainer& parent,
   // ROM properties
   myGlobalProps = make_unique<GlobalPropsDialog>(this, osystem.frameBuffer().font());
 
-  // Create dialog whereby the files shown in the ROM listing can be customized
-  myFilters = make_unique<LauncherFilterDialog>(this, osystem.frameBuffer().font());
-
-  // Figure out which filters are needed for the ROM listing
-  setListFilters();
+  // Do we show only ROMs or all files?
+  showOnlyROMs(instance().settings().getBool("launcherroms"));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -193,9 +198,8 @@ const string& LauncherDialog::selectedRomMD5()
   if(item < 0)
     return EmptyString;
 
-  string extension;
   const FilesystemNode node(myGameList->path(item));
-  if(node.isDirectory() || !LauncherFilterDialog::isValidRomName(node, extension))
+  if(node.isDirectory() || !Bankswitch::isValidRomName(node))
     return EmptyString;
 
   // Make sure we have a valid md5 for this ROM
@@ -208,29 +212,11 @@ const string& LauncherDialog::selectedRomMD5()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void LauncherDialog::loadConfig()
 {
+  // Should we use a temporary directory specified on the commandline, or the
+  // default one specified by the settings?
   const string& tmpromdir = instance().settings().getString("tmpromdir");
   const string& romdir = tmpromdir != "" ? tmpromdir :
       instance().settings().getString("romdir");
-
-  // When romdir hasn't been set, it probably indicates that this is the first
-  // time running Stella; in this case, we should prompt the user
-  if(romdir == "")
-  {
-    if(!myFirstRunMsg)
-    {
-      StringList msg;
-      msg.push_back("This seems to be your first time running Stella.");
-      msg.push_back("Before you can start a game, you need to");
-      msg.push_back("specify where your ROMs are located.");
-      msg.push_back("");
-      msg.push_back("Click 'OK' to select a default ROM directory,");
-      msg.push_back("or 'Cancel' to browse the filesystem manually.");
-      myFirstRunMsg = make_unique<GUI::MessageBox>
-                          (this, instance().frameBuffer().font(),
-                          msg, _w, _h, kFirstRunMsgChosenCmd);
-    }
-    myFirstRunMsg->show();
-  }
 
   // Assume that if the list is empty, this is the first time that loadConfig()
   // has been called (and we should reload the list)
@@ -303,16 +289,9 @@ void LauncherDialog::loadDirListing()
     bool isDir = f.isDirectory();
     const string& name = isDir ? (" [" + f.getName() + "]") : f.getName();
 
-    // Honour the filtering settings
-    // Showing only certain ROM extensions is determined by the extension
-    // that we want - if there are no extensions, it implies show all files
-    // In this way, showing all files is on the 'fast code path'
-    if(!isDir && myRomExts.size() > 0)
-    {
-      // Skip over those names we've filtered out
-      if(!LauncherFilterDialog::isValidRomName(name, myRomExts))
-        continue;
-    }
+    // Do we want to show only ROMs or all files?
+    if(!isDir && myShowOnlyROMs && !Bankswitch::isValidRomName(f))
+      continue;
 
     // Skip over files that don't match the pattern in the 'pattern' textbox
     if(domatch && !isDir && !matchPattern(name, myPattern->getText()))
@@ -332,9 +311,8 @@ void LauncherDialog::loadRomInfo()
   int item = myList->getSelected();
   if(item < 0) return;
 
-  string extension;
   const FilesystemNode node(myGameList->path(item));
-  if(!node.isDirectory() && LauncherFilterDialog::isValidRomName(node, extension))
+  if(!node.isDirectory() && Bankswitch::isValidRomName(node))
   {
     // Make sure we have a valid md5 for this ROM
     if(myGameList->md5(item) == "")
@@ -359,9 +337,10 @@ void LauncherDialog::handleContextMenu()
   {
     myGlobalProps->open();
   }
-  else if(cmd == "filter")
+  else if(cmd == "roms" || cmd == "allfiles")
   {
-    myFilters->open();
+    showOnlyROMs(cmd == "roms");
+    updateListing();
   }
   else if(cmd == "reload")
   {
@@ -370,11 +349,10 @@ void LauncherDialog::handleContextMenu()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void LauncherDialog::setListFilters()
+void LauncherDialog::showOnlyROMs(bool state)
 {
-  const string& exts = instance().settings().getString("launcherexts");
-  myRomExts.clear();
-  LauncherFilterDialog::parseExts(myRomExts, exts);
+  myShowOnlyROMs = state;
+  instance().settings().setValue("launcherroms", state);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -423,23 +401,23 @@ void LauncherDialog::handleKeyDown(StellaKey key, StellaMod mod)
 {
   // Grab the key before passing it to the actual dialog and check for
   // Control-R (reload ROM listing)
-  if(instance().eventHandler().kbdControl(mod) && key == KBDK_R)
+  if(StellaModTest::isControl(mod) && key == KBDK_R)
     updateListing();
   else
     Dialog::handleKeyDown(key, mod);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void LauncherDialog::handleMouseDown(int x, int y, int button, int clickCount)
+void LauncherDialog::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   // Grab right mouse button for context menu, send left to base class
-  if(button == 2)
+  if(b == MouseButton::RIGHT)
   {
     // Add menu at current x,y mouse location
     myMenu->show(x + getAbsX(), y + getAbsY());
   }
   else
-    Dialog::handleMouseDown(x, y, button, clickCount);
+    Dialog::handleMouseDown(x, y, b, clickCount);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -479,7 +457,13 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
           const string& result =
             instance().createConsole(romnode, myGameList->md5(item));
           if(result == EmptyString)
+          {
             instance().settings().setValue("lastrom", myList->getSelectedString());
+
+            // If romdir has never been set, set it now based on the selected rom
+            if(instance().settings().getString("romdir") == EmptyString)
+              instance().settings().setValue("romdir", romnode.getParent().getShortPath());
+          }
           else
             instance().frameBuffer().showMessage(result, MessagePosition::MiddleCenter, true);
         }
@@ -506,21 +490,6 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
       instance().eventHandler().quit();
       break;
 
-    case kFirstRunMsgChosenCmd:
-      // Show a file browser, starting from the users' home directory
-      if(!myRomDir)
-        myRomDir = make_unique<BrowserDialog>(this, instance().frameBuffer().font(), _w, _h);
-
-      myRomDir->show("Select ROM directory", "~",
-                     BrowserDialog::Directories, kStartupRomDirChosenCmd);
-      break;
-
-    case kStartupRomDirChosenCmd:
-    {
-      FilesystemNode dir(myRomDir->getResult());
-      instance().settings().setValue("romdir", dir.getShortPath());
-      [[fallthrough]];
-    }
     case kRomDirChosenCmd:
       myCurrentNode = FilesystemNode(instance().settings().getString("romdir"));
       if(!(myCurrentNode.exists() && myCurrentNode.isDirectory()))
@@ -532,8 +501,8 @@ void LauncherDialog::handleCommand(CommandSender* sender, int cmd,
       updateListing();
       break;
 
-    case kReloadFiltersCmd:
-      setListFilters();
+    case kOnlyROMsCmd:
+      showOnlyROMs(data);  // NOTE: present for when we add a widget for this
       updateListing();
       break;
 

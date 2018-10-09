@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -16,6 +16,7 @@
 //============================================================================
 
 #include "Dialog.hxx"
+#include "StellaKeys.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "EditableWidget.hxx"
@@ -38,6 +39,7 @@ EditableWidget::EditableWidget(GuiObject* boss, const GUI::Font& font,
 
   _bgcolor = kWidColor;
   _bgcolorhi = kWidColor;
+  _bgcolorlo = kDlgColor;
   _textcolor = kTextColor;
   _textcolorhi = kTextColor;
 
@@ -112,7 +114,7 @@ bool EditableWidget::handleKeyDown(StellaKey key, StellaMod mod)
     return true;
 
   // Ignore all alt-mod keys
-  if(instance().eventHandler().kbdAlt(mod))
+  if(StellaModTest::isAlt(mod))
     return true;
 
   bool handled = true;
@@ -145,14 +147,14 @@ bool EditableWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_LEFT:
-      if(instance().eventHandler().kbdControl(mod))
+      if(StellaModTest::isControl(mod))
         dirty = specialKeys(key);
       else if(_caretPos > 0)
         dirty = setCaretPos(_caretPos - 1);
       break;
 
     case KBDK_RIGHT:
-      if(instance().eventHandler().kbdControl(mod))
+      if(StellaModTest::isControl(mod))
         dirty = specialKeys(key);
       else if(_caretPos < int(_editString.size()))
         dirty = setCaretPos(_caretPos + 1);
@@ -167,7 +169,7 @@ bool EditableWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     default:
-      if (instance().eventHandler().kbdControl(mod))
+      if (StellaModTest::isControl(mod))
       {
         dirty = specialKeys(key);
       }
@@ -452,13 +454,13 @@ bool EditableWidget::moveWord(int direction)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EditableWidget::copySelectedText()
 {
-  _clippedText = _editString;
+//  _clippedText = _editString;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EditableWidget::pasteSelectedText()
 {
-  _editString = _clippedText;
+//  _editString = _clippedText;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

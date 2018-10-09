@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -67,9 +67,10 @@ CartridgeCDF::CartridgeCDF(const BytePtr& image, uInt32 size,
   setVersion();
 
   // Create Thumbulator ARM emulator
+  const string& prefix = settings.getBool("dev.settings") ? "dev." : "plr.";
   myThumbEmulator = make_unique<Thumbulator>(
     reinterpret_cast<uInt16*>(myImage), reinterpret_cast<uInt16*>(myCDFRAM),
-    settings.getBool("thumb.trapfatal"), myVersion ?
+    settings.getBool(prefix + "thumb.trapfatal"), myVersion ?
     Thumbulator::ConfigureFor::CDF1 : Thumbulator::ConfigureFor::CDF, this);
 
   setInitialState();
@@ -86,7 +87,7 @@ void CartridgeCDF::reset()
   setInitialState();
 
   // Upon reset we switch to the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -99,12 +100,13 @@ void CartridgeCDF::setInitialState()
     myMusicWaveformSize[i] = 27;
 
   // CDF always starts in bank 6
-  myStartBank = 6;
+  initializeStartBank(6);
 
   // Assuming mode starts out with Fast Fetch off and 3-Voice music,
   // need to confirm with Chris
   myMode = 0xFF;
 
+  myBankOffset = myLDAimmediateOperandAddress = myJMPoperandAddress = 0;
   myFastJumpActive = 0;
 }
 
@@ -125,7 +127,7 @@ void CartridgeCDF::install(System& system)
     mySystem->setPageAccess(addr, access);
 
   // Install pages for the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -194,8 +196,8 @@ uInt8 CartridgeCDF::peek(uInt16 address)
     uInt32 pointer;
     uInt8 value;
 
-    myFastJumpActive--;
-    myJMPoperandAddress++;
+    --myFastJumpActive;
+    ++myJMPoperandAddress;
 
     pointer = getDatastreamPointer(JUMPSTREAM);
     value = myDisplayImage[ pointer >> 20 ];
@@ -476,8 +478,6 @@ bool CartridgeCDF::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     // Indicates which bank is currently active
     out.putShort(myBankOffset);
 
@@ -518,9 +518,6 @@ bool CartridgeCDF::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     // Indicates which bank is currently active
     myBankOffset = in.getShort();
 

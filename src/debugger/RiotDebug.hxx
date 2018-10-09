@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -36,10 +36,19 @@ class RiotState : public DebuggerState
     BoolArray swbcntBits;
 
     uInt8 TIM1T, TIM8T, TIM64T, T1024T, INTIM, TIMINT;
-    Int32 TIMCLKS, INTIMCLKS;
+    Int32 TIMCLKS, INTIMCLKS, TIMDIV;
 
     // These are actually from the TIA, but are I/O related
     uInt8 INPT0, INPT1, INPT2, INPT3, INPT4, INPT5;
+    bool INPTLatch, INPTDump;
+
+    RiotState()
+      : SWCHA_R(0), SWCHA_W(0), SWACNT(0), SWCHB_R(0), SWCHB_W(0), SWBCNT(0),
+        TIM1T(0), TIM8T(0), TIM64T(0), T1024T(0), INTIM(0), TIMINT(0),
+        TIMCLKS(0), INTIMCLKS(0), TIMDIV(0),
+        INPT0(0), INPT1(0), INPT2(0), INPT3(0), INPT4(0), INPT5(0),
+        INPTLatch(false), INPTDump(false)
+    { }
 };
 
 class RiotDebug : public DebuggerSystem
@@ -73,6 +82,7 @@ class RiotDebug : public DebuggerSystem
     uInt8 timint() const;
     Int32 timClocks() const;
     Int32 intimClocks() const;
+    Int32 timDivider() const;
 
     /* Controller ports */
     Controller& controller(Controller::Jack jack) const;

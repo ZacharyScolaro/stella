@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,8 +28,7 @@ FBSurfaceSDL2::FBSurfaceSDL2(FrameBufferSDL2& buffer,
     myTexAccess(SDL_TEXTUREACCESS_STREAMING),
     myInterpolate(false),
     myBlendEnabled(false),
-    myBlendAlpha(255),
-    myStaticData(nullptr)
+    myBlendAlpha(255)
 {
   createSurface(width, height, data);
 }
@@ -38,19 +37,16 @@ FBSurfaceSDL2::FBSurfaceSDL2(FrameBufferSDL2& buffer,
 FBSurfaceSDL2::~FBSurfaceSDL2()
 {
   if(mySurface)
+  {
     SDL_FreeSurface(mySurface);
+    mySurface = nullptr;
+  }
 
   free();
-
-  if(myStaticData)
-  {
-    delete[] myStaticData;
-    myStaticData = nullptr;
-  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FBSurfaceSDL2::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, uInt32 color)
+void FBSurfaceSDL2::fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, ColorId color)
 {
   // Fill the rectangle
   SDL_Rect tmp;
@@ -122,27 +118,20 @@ void FBSurfaceSDL2::setVisible(bool visible)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FBSurfaceSDL2::translateCoords(Int32& x, Int32& y) const
 {
-  x -= myDstR.x;
-  y -= myDstR.y;
+  x -= myDstR.x;  x /= myDstR.w / mySrcR.w;
+  y -= myDstR.y;  y /= myDstR.h / mySrcR.h;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool FBSurfaceSDL2::render()
 {
-  if(mySurfaceIsDirty && myIsVisible)
+  if(myIsVisible)
   {
-//cerr << "src: x=" << mySrcR.x << ", y=" << mySrcR.y << ", w=" << mySrcR.w << ", h=" << mySrcR.h << endl;
-//cerr << "dst: x=" << myDstR.x << ", y=" << myDstR.y << ", w=" << myDstR.w << ", h=" << myDstR.h << endl;
-
-//cerr << "render()\n";
     if(myTexAccess == SDL_TEXTUREACCESS_STREAMING)
       SDL_UpdateTexture(myTexture, &mySrcR, mySurface->pixels, mySurface->pitch);
     SDL_RenderCopy(myFB.myRenderer, myTexture, &mySrcR, &myDstR);
 
-    mySurfaceIsDirty = false;
-
-    // Let postFrameUpdate() know that a change has been made
-    return myFB.myDirtyFlag = true;
+    return true;
   }
   return false;
 }
@@ -173,7 +162,7 @@ void FBSurfaceSDL2::reload()
 
   // If the data is static, we only upload it once
   if(myTexAccess == SDL_TEXTUREACCESS_STATIC)
-    SDL_UpdateTexture(myTexture, nullptr, myStaticData, myStaticPitch);
+    SDL_UpdateTexture(myTexture, nullptr, myStaticData.get(), myStaticPitch);
 
   // Blending enabled?
   if(myBlendEnabled)
@@ -210,9 +199,10 @@ void FBSurfaceSDL2::createSurface(uInt32 width, uInt32 height,
 
   // We start out with the src and dst rectangles containing the same
   // dimensions, indicating no scaling or re-positioning
-  mySrcR.x = mySrcR.y = myDstR.x = myDstR.y = 0;
-  mySrcR.w = myDstR.w = width;
-  mySrcR.h = myDstR.h = height;
+  setSrcPos(0, 0);
+  setDstPos(0, 0);
+  setSrcSize(width, height);
+  setDstSize(width, height);
 
   ////////////////////////////////////////////////////
   // These *must* be set for the parent class
@@ -224,8 +214,8 @@ void FBSurfaceSDL2::createSurface(uInt32 width, uInt32 height,
   {
     myTexAccess = SDL_TEXTUREACCESS_STATIC;
     myStaticPitch = mySurface->w * 4;  // we need pitch in 'bytes'
-    myStaticData = new uInt32[mySurface->w * mySurface->h];
-    SDL_memcpy(myStaticData, data, mySurface->w * mySurface->h * 4);
+    myStaticData = make_unique<uInt32[]>(mySurface->w * mySurface->h);
+    SDL_memcpy(myStaticData.get(), data, mySurface->w * mySurface->h * 4);
   }
 
   applyAttributes(false);

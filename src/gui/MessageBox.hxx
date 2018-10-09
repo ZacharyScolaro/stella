@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -37,10 +37,12 @@ class MessageBox : public Dialog, public CommandSender
     MessageBox(GuiObject* boss, const GUI::Font& font, const StringList& text,
                int max_w, int max_h, int cmd = 0,
                const string& okText = "OK", const string& cancelText = "Cancel",
+               const string& title = "",
                bool focusOKButton = true);
     MessageBox(GuiObject* boss, const GUI::Font& font, const string& text,
                int max_w, int max_h, int cmd = 0,
                const string& okText = "OK", const string& cancelText = "Cancel",
+               const string& title = "",
                bool focusOKButton = true);
     virtual ~MessageBox() = default;
 

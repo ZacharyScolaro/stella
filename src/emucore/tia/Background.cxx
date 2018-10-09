@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,6 +20,7 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Background::Background()
+  : myTIA(nullptr)
 {
   reset();
 }
@@ -81,8 +82,6 @@ bool Background::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     out.putByte(myColor);
     out.putByte(myObjectColor);
     out.putByte(myDebugColor);
@@ -102,9 +101,6 @@ bool Background::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myColor = in.getByte();
     myObjectColor = in.getByte();
     myDebugColor = in.getByte();

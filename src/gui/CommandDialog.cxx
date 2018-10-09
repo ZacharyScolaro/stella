@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -27,26 +27,25 @@
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CommandDialog::CommandDialog(OSystem& osystem, DialogContainer& parent)
-  : Dialog(osystem, parent)
+  : Dialog(osystem, parent, osystem.frameBuffer().font(), "Commands")
 {
-  const GUI::Font& font = instance().frameBuffer().font();
-  const int buttonWidth = font.getStringWidth("Right Diff B") + 20,
-            buttonHeight = font.getLineHeight() + 6,
-            rowHeight = font.getLineHeight() + 10;
+  const int buttonWidth = _font.getStringWidth("Right Diff B") + 20,
+            buttonHeight = _font.getLineHeight() + 6,
+            rowHeight = buttonHeight + 8;
 
   // Set real dimensions
   _w = 3 * (buttonWidth + 5) + 20;
-  _h = 6 * rowHeight + 15;
+  _h = 6 * rowHeight + 8 + _th;
 
   WidgetArray wid;
   ButtonWidget* b[16];
-  int xoffset = 10, yoffset = 10;
+  int xoffset = 10, yoffset = 8 + _th;
 
   auto ADD_CD_BUTTON = [&](const string& label, int cmd)
   {
-    ButtonWidget* bw = new ButtonWidget(this, font, xoffset, yoffset,
+    ButtonWidget* bw = new ButtonWidget(this, _font, xoffset, yoffset,
             buttonWidth, buttonHeight, label, cmd);
-    xoffset += buttonWidth + 6;
+    xoffset += buttonWidth + 8;
     return bw;
   };
 
@@ -56,31 +55,31 @@ CommandDialog::CommandDialog(OSystem& osystem, DialogContainer& parent)
   b[8] = ADD_CD_BUTTON("Save State", kSaveStateCmd);
 
   // Row 2
-  xoffset = 10;  yoffset += buttonHeight + 3;
+  xoffset = 10;  yoffset += buttonHeight + 8;
   b[1] = ADD_CD_BUTTON("Reset", kResetCmd);
   b[5] = ADD_CD_BUTTON("Left Diff B", kLeftDiffBCmd);
   b[9] = ADD_CD_BUTTON("State Slot", kStateSlotCmd);
 
   // Row 3
-  xoffset = 10;  yoffset += buttonHeight + 3;
+  xoffset = 10;  yoffset += buttonHeight + 8;
   b[2]  = ADD_CD_BUTTON("Color TV", kColorCmd);
   b[6]  = ADD_CD_BUTTON("Right Diff A", kRightDiffACmd);
   b[10] = ADD_CD_BUTTON("Load State", kLoadStateCmd);
 
   // Row 4
-  xoffset = 10;  yoffset += buttonHeight + 3;
+  xoffset = 10;  yoffset += buttonHeight + 8;
   b[3]  = ADD_CD_BUTTON("B/W TV", kBWCmd);
   b[7]  = ADD_CD_BUTTON("Right Diff B", kRightDiffBCmd);
   b[11] = ADD_CD_BUTTON("Snapshot", kSnapshotCmd);
 
   // Row 5
-  xoffset = 10;  yoffset += buttonHeight + 3;
-  b[12] = ADD_CD_BUTTON("NTSC/PAL", kFormatCmd);
+  xoffset = 10;  yoffset += buttonHeight + 8;
+  b[12] = ADD_CD_BUTTON("TV Format", kFormatCmd);
   b[13] = ADD_CD_BUTTON("Palette", kPaletteCmd);
   b[14] = ADD_CD_BUTTON("Reload ROM", kReloadRomCmd);
 
   // Row 6
-  xoffset = 10 + buttonWidth + 6;  yoffset += buttonHeight + 3;
+  xoffset = 10 + buttonWidth + 8;  yoffset += buttonHeight + 8;
   b[15] = ADD_CD_BUTTON("Exit Game", kExitCmd);
 
   for(int i = 0; i < 16; ++i)

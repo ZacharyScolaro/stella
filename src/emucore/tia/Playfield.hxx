@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,7 +26,7 @@ class TIA;
 class Playfield : public Serializable
 {
   public:
-    Playfield(uInt32 collisionMask);
+    explicit Playfield(uInt32 collisionMask);
 
   public:
 
@@ -59,6 +59,8 @@ class Playfield : public Serializable
 
     void tick(uInt32 x);
 
+    void nextLine();
+
     bool isOn() const { return (collision & 0x8000); }
     uInt8 getColor() const;
 
@@ -67,7 +69,6 @@ class Playfield : public Serializable
     */
     bool save(Serializer& out) const override;
     bool load(Serializer& in) override;
-    string name() const override { return "TIA_Playfield"; }
 
   public:
 

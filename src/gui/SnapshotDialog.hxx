@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -22,7 +22,6 @@ class OSystem;
 class GuiObject;
 class DialogContainer;
 class CheckboxWidget;
-class PopUpWidget;
 class EditTextWidget;
 class SliderWidget;
 class StaticTextWidget;
@@ -35,7 +34,7 @@ class SnapshotDialog : public Dialog
 {
   public:
     SnapshotDialog(OSystem& osystem, DialogContainer& parent,
-                   const GUI::Font& font);
+                   const GUI::Font& font, int max_w, int max_h);
     virtual ~SnapshotDialog();
 
   private:
@@ -44,24 +43,22 @@ class SnapshotDialog : public Dialog
     void setDefaults() override;
 
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
-    void createBrowser();
+    void createBrowser(const string& title);
 
   private:
     enum {
       kChooseSnapSaveDirCmd = 'LOss', // snapshot dir (save files)
-      kChooseSnapLoadDirCmd = 'LOsl', // snapshot dir (load files)
       kSnapSaveDirChosenCmd = 'snsc', // snap chosen (save files)
-      kSnapLoadDirChosenCmd = 'snlc'  // snap chosen (load files)
+      kSnapshotInterval     = 'SnIn'  // snap chosen (load files)
     };
 
     const GUI::Font& myFont;
 
     // Config paths
     EditTextWidget* mySnapSavePath;
-    EditTextWidget* mySnapLoadPath;
 
-    PopUpWidget* mySnapName;
-    PopUpWidget* mySnapInterval;
+    CheckboxWidget* mySnapName;
+    SliderWidget* mySnapInterval;
 
     CheckboxWidget* mySnapSingle;
     CheckboxWidget* mySnap1x;

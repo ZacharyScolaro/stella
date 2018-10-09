@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -23,7 +23,6 @@
 #include "SaveKey.hxx"
 #include "AtariVox.hxx"
 #include "Settings.hxx"
-#include "EventMappingWidget.hxx"
 #include "EditTextWidget.hxx"
 #include "PopUpWidget.hxx"
 #include "RadioButtonWidget.hxx"
@@ -39,12 +38,13 @@
 #include "OSystem.hxx"
 #include "StateManager.hxx"
 #include "RewindManager.hxx"
+#include "M6502.hxx"
 #include "DeveloperDialog.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 DeveloperDialog::DeveloperDialog(OSystem& osystem, DialogContainer& parent,
-                         const GUI::Font& font, int max_w, int max_h)
-  : Dialog(osystem, parent)
+                                 const GUI::Font& font, int max_w, int max_h)
+  : Dialog(osystem, parent, font, "Developer settings")
 {
   const int VGAP = 4;
   const int lineHeight = font.getLineHeight(),
@@ -54,18 +54,21 @@ DeveloperDialog::DeveloperDialog(OSystem& osystem, DialogContainer& parent,
 
   // Set real dimensions
   _w = std::min(53 * fontWidth + 10, max_w);
-  _h = std::min(15 * (lineHeight + VGAP) + 14, max_h);
+  _h = std::min(15 * (lineHeight + VGAP) + 14 + _th, max_h);
 
   // The tab widget
   xpos = 2; ypos = 4;
-  myTab = new TabWidget(this, font, xpos, ypos, _w - 2 * xpos, _h - buttonHeight - 16 - ypos);
+  myTab = new TabWidget(this, font, xpos, ypos + _th, _w - 2 * xpos, _h - _th - buttonHeight - 16 - ypos);
   addTabWidget(myTab);
 
   addEmulationTab(font);
   addVideoTab(font);
   addTimeMachineTab(font);
   addDebuggerTab(font);
-  addDefaultOKCancelButtons(font);
+
+  WidgetArray wid;
+  addDefaultsOKCancelBGroup(wid, font);
+  addBGroupToFocusList(wid);
 
   // Activate the first tab
   myTab->setActiveTab(0);
@@ -82,7 +85,7 @@ void DeveloperDialog::addEmulationTab(const GUI::Font& font)
   int lineHeight = font.getLineHeight();
   WidgetArray wid;
   VariantList items;
-  int tabID = myTab->addTab(" Emulation ");
+  int tabID = myTab->addTab("Emulation");
 
   // settings set
   mySettingsGroup0 = new RadioButtonGroup();
@@ -95,7 +98,7 @@ void DeveloperDialog::addEmulationTab(const GUI::Font& font)
   wid.push_back(r);
   ypos += lineHeight + VGAP * 1;
 
-  myFrameStatsWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 1, ypos + 1, "Frame statistics");
+  myFrameStatsWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 1, ypos + 1, "Console info overlay");
   wid.push_back(myFrameStatsWidget);
   ypos += lineHeight + VGAP;
 
@@ -128,7 +131,6 @@ void DeveloperDialog::addEmulationTab(const GUI::Font& font)
   ypos += lineHeight + VGAP;
 
   // Randomize CPU
-  lwidth = font.getStringWidth("Randomize CPU ");
   myRandomizeCPULabel = new StaticTextWidget(myTab, font, HBORDER + INDENT * 2, ypos + 1, "Randomize CPU ");
   wid.push_back(myRandomizeCPULabel);
 
@@ -153,6 +155,12 @@ void DeveloperDialog::addEmulationTab(const GUI::Font& font)
   myThumbExceptionWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 1, ypos + 1,
                                               "Fatal ARM emulation error throws exception");
   wid.push_back(myThumbExceptionWidget);
+  ypos += lineHeight + VGAP;
+
+  // AtariVox/SaveKey EEPROM access
+  myEEPROMAccessWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 1, ypos + 1,
+                                            "Display AtariVox/SaveKey EEPROM R/W access");
+  wid.push_back(myEEPROMAccessWidget);
 
   // Add items for tab 0
   addToFocusList(wid, myTab, tabID);
@@ -175,7 +183,6 @@ void DeveloperDialog::addVideoTab(const GUI::Font& font)
   int tabID = myTab->addTab("Video");
 
   wid.clear();
-  ypos = VBORDER;
 
   // settings set
   mySettingsGroup1 = new RadioButtonGroup();
@@ -194,15 +201,14 @@ void DeveloperDialog::addVideoTab(const GUI::Font& font)
   wid.push_back(myTVJitterWidget);
   myTVJitterRecWidget = new SliderWidget(myTab, font,
                                          myTVJitterWidget->getRight() + fontWidth * 3, ypos - 1,
-                                         8 * fontWidth, lineHeight, "Recovery ",
-                                         font.getStringWidth("Recovery "), kTVJitterChanged);
+                                         "Recovery ", 0, kTVJitterChanged);
   myTVJitterRecWidget->setMinValue(1); myTVJitterRecWidget->setMaxValue(20);
+  myTVJitterRecWidget->setTickmarkInterval(5);
   wid.push_back(myTVJitterRecWidget);
   myTVJitterRecLabelWidget = new StaticTextWidget(myTab, font,
                                                   myTVJitterRecWidget->getRight() + 4,
                                                   myTVJitterRecWidget->getTop() + 2,
-                                                  5 * fontWidth, fontHeight, "", TextAlign::Left);
-  wid.push_back(myTVJitterRecLabelWidget);
+                                                  5 * fontWidth, fontHeight, "");
   ypos += lineHeight + VGAP;
 
   myColorLossWidget = new CheckboxWidget(myTab, font, HBORDER + INDENT * 1, ypos + 1,
@@ -251,7 +257,7 @@ void DeveloperDialog::addVideoTab(const GUI::Font& font)
   // Add message concerning usage
   const GUI::Font& infofont = instance().frameBuffer().infoFont();
   ypos = myTab->getHeight() - 5 - fontHeight - infofont.getFontHeight() - 10;
-  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) colors identical for player and developer settings");
+  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) Colors identical for player and developer settings");
 
   // Add items for tab 2
   addToFocusList(wid, myTab, tabID);
@@ -303,8 +309,10 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   const int VBORDER = 8;
   const int VGAP = 4;
   int ypos = VBORDER;
-  int lineHeight = font.getLineHeight();
-  int fontHeight = font.getFontHeight();
+  int lineHeight = font.getLineHeight(),
+    fontHeight = font.getFontHeight(),
+    fontWidth = font.getMaxCharWidth(),
+    lwidth = fontWidth * 11;
   WidgetArray wid;
   VariantList items;
   int tabID = myTab->addTab("Time Machine");
@@ -325,25 +333,23 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   wid.push_back(myTimeMachineWidget);
   ypos += lineHeight + VGAP;
 
-  int sWidth = font.getMaxCharWidth() * 8;
-  myStateSizeWidget = new SliderWidget(myTab, font, HBORDER + INDENT * 2, ypos - 1, sWidth, lineHeight,
-                                       "Buffer size (*)   ", 0, kSizeChanged);
+  int swidth = fontWidth * 12 + 5; // width of PopUpWidgets below
+  myStateSizeWidget = new SliderWidget(myTab, font, HBORDER + INDENT * 2, ypos - 1, swidth, lineHeight,
+                                       "Buffer size (*)   ", 0, kSizeChanged, lwidth, " states");
   myStateSizeWidget->setMinValue(20);
   myStateSizeWidget->setMaxValue(1000);
   myStateSizeWidget->setStepValue(20);
+  myStateSizeWidget->setTickmarkInterval(5);
   wid.push_back(myStateSizeWidget);
-  myStateSizeLabelWidget = new StaticTextWidget(myTab, font, myStateSizeWidget->getRight() + 4,
-                                                myStateSizeWidget->getTop() + 2, "100 ");
   ypos += lineHeight + VGAP;
 
-  myUncompressedWidget = new SliderWidget(myTab, font, HBORDER + INDENT * 2, ypos - 1, sWidth, lineHeight,
-                                          "Uncompressed size ", 0, kUncompressedChanged);
+  myUncompressedWidget = new SliderWidget(myTab, font, HBORDER + INDENT * 2, ypos - 1, swidth, lineHeight,
+                                          "Uncompressed size ", 0, kUncompressedChanged, lwidth, " states");
   myUncompressedWidget->setMinValue(0);
   myUncompressedWidget->setMaxValue(1000);
   myUncompressedWidget->setStepValue(20);
+  myUncompressedWidget->setTickmarkInterval(5);
   wid.push_back(myUncompressedWidget);
-  myUncompressedLabelWidget = new StaticTextWidget(myTab, font, myUncompressedWidget->getRight() + 4,
-                                                   myUncompressedWidget->getTop() + 2, "50  ");
   ypos += lineHeight + VGAP;
 
   items.clear();
@@ -365,7 +371,7 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
   // Add message concerning usage
   const GUI::Font& infofont = instance().frameBuffer().infoFont();
   ypos = myTab->getHeight() - 5 - fontHeight - infofont.getFontHeight() - 10;
-  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) Requires application restart");
+  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) Any size change clears the buffer");
 
   addToFocusList(wid, myTab, tabID);
 }
@@ -374,13 +380,13 @@ void DeveloperDialog::addTimeMachineTab(const GUI::Font& font)
 void DeveloperDialog::addDebuggerTab(const GUI::Font& font)
 {
   int tabID = myTab->addTab("Debugger");
+  WidgetArray wid;
 
 #ifdef DEBUGGER_SUPPORT
   const int HBORDER = 10;
   const int VBORDER = 8;
   const int VGAP = 4;
 
-  WidgetArray wid;
   VariantList items;
   int fontWidth = font.getMaxCharWidth(),
     fontHeight = font.getFontHeight(),
@@ -399,55 +405,53 @@ void DeveloperDialog::addDebuggerTab(const GUI::Font& font)
   pwidth = font.getStringWidth("Medium");
   myDebuggerFontSize =
     new PopUpWidget(myTab, font, HBORDER, ypos + 1, pwidth, lineHeight, items,
-                    "Font size  ", 0, kDFontSizeChanged);
+                    "Font size (*)  ", 0, kDFontSizeChanged);
   wid.push_back(myDebuggerFontSize);
   ypos += lineHeight + 4;
 
   // Font style (bold label vs. text, etc)
   items.clear();
-  VarList::push_back(items, "All Normal font", "0");
+  VarList::push_back(items, "All normal font", "0");
   VarList::push_back(items, "Bold labels only", "1");
   VarList::push_back(items, "Bold non-labels only", "2");
-  VarList::push_back(items, "All Bold font", "3");
+  VarList::push_back(items, "All bold font", "3");
   pwidth = font.getStringWidth("Bold non-labels only");
   myDebuggerFontStyle =
     new PopUpWidget(myTab, font, HBORDER, ypos + 1, pwidth, lineHeight, items,
-                    "Font style ", 0);
+                    "Font style (*) ", 0);
   wid.push_back(myDebuggerFontStyle);
 
   ypos += lineHeight + VGAP * 4;
 
-  pwidth = font.getMaxCharWidth() * 8;
   // Debugger width and height
-  myDebuggerWidthSlider = new SliderWidget(myTab, font, xpos, ypos-1, pwidth,
-                                           lineHeight, "Debugger width  ",
-                                           0, kDWidthChanged);
+  myDebuggerWidthSlider = new SliderWidget(myTab, font, xpos, ypos-1, "Debugger width (*)  ",
+                                           0, 0, 6 * fontWidth, "px");
   myDebuggerWidthSlider->setMinValue(DebuggerDialog::kSmallFontMinW);
   myDebuggerWidthSlider->setMaxValue(ds.w);
   myDebuggerWidthSlider->setStepValue(10);
+  // one tickmark every ~100 pixel
+  myDebuggerWidthSlider->setTickmarkInterval((ds.w - DebuggerDialog::kSmallFontMinW + 50) / 100);
   wid.push_back(myDebuggerWidthSlider);
-  myDebuggerWidthLabel =
-    new StaticTextWidget(myTab, font,
-                         xpos + myDebuggerWidthSlider->getWidth() + 4,
-                         ypos + 1, 4 * fontWidth, fontHeight, "", TextAlign::Left);
   ypos += lineHeight + VGAP;
 
-  myDebuggerHeightSlider = new SliderWidget(myTab, font, xpos, ypos-1, pwidth,
-                                            lineHeight, "Debugger height ",
-                                            0, kDHeightChanged);
+  myDebuggerHeightSlider = new SliderWidget(myTab, font, xpos, ypos-1, "Debugger height (*) ",
+                                            0, 0, 6 * fontWidth, "px");
   myDebuggerHeightSlider->setMinValue(DebuggerDialog::kSmallFontMinH);
   myDebuggerHeightSlider->setMaxValue(ds.h);
   myDebuggerHeightSlider->setStepValue(10);
+  // one tickmark every ~100 pixel
+  myDebuggerHeightSlider->setTickmarkInterval((ds.h - DebuggerDialog::kSmallFontMinH + 50) / 100);
   wid.push_back(myDebuggerHeightSlider);
-  myDebuggerHeightLabel =
-    new StaticTextWidget(myTab, font,
-                         xpos + myDebuggerHeightSlider->getWidth() + 4,
-                         ypos + 1, 4 * fontWidth, fontHeight, "", TextAlign::Left);
+  ypos += lineHeight + VGAP * 4;
+
+  myGhostReadsTrapWidget = new CheckboxWidget(myTab, font, HBORDER, ypos + 1,
+                                             "Trap on 'ghost' reads", kGhostReads);
+  wid.push_back(myGhostReadsTrapWidget);
 
   // Add message concerning usage
   const GUI::Font& infofont = instance().frameBuffer().infoFont();
   ypos = myTab->getHeight() - 5 - fontHeight - infofont.getFontHeight() - 10;
-  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) Changes require application restart");
+  new StaticTextWidget(myTab, infofont, HBORDER, ypos, "(*) Changes require a ROM reload");
 
   // Debugger is only realistically available in windowed modes 800x600 or greater
   // (and when it's actually been compiled into the app)
@@ -460,15 +464,10 @@ void DeveloperDialog::addDebuggerTab(const GUI::Font& font)
   if(!debuggerAvailable)
   {
     myDebuggerWidthSlider->clearFlags(WIDGET_ENABLED);
-    myDebuggerWidthLabel->clearFlags(WIDGET_ENABLED);
     myDebuggerHeightSlider->clearFlags(WIDGET_ENABLED);
-    myDebuggerHeightLabel->clearFlags(WIDGET_ENABLED);
   }
-
-  // Add items for tab 1
-  addToFocusList(wid, myTab, tabID);
 #else
-  new StaticTextWidget(myTab, font, 0, 20, _w - 20, fontHeight,
+  new StaticTextWidget(myTab, font, 0, 20, _w - 20, font.getFontHeight(),
                        "Debugger support not included", TextAlign::Center);
 #endif
 
@@ -476,24 +475,9 @@ void DeveloperDialog::addDebuggerTab(const GUI::Font& font)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DeveloperDialog::addDefaultOKCancelButtons(const GUI::Font& font)
-{
-  const int buttonWidth = font.getStringWidth("Defaults") + 20,
-    buttonHeight = font.getLineHeight() + 4;
-  WidgetArray wid;
-
-  wid.clear();
-  ButtonWidget* btn = new ButtonWidget(this, font, 10, _h - buttonHeight - 10,
-                                       buttonWidth, buttonHeight, "Defaults", GuiObject::kDefaultsCmd);
-  wid.push_back(btn);
-  addOKCancelBGroup(wid, font);
-  addBGroupToFocusList(wid);
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DeveloperDialog::loadSettings(SettingsSet set)
 {
-  string prefix = set == SettingsSet::player ? "plr." : "dev.";
+  const string& prefix = set == SettingsSet::player ? "plr." : "dev.";
 
   myFrameStats[set] = instance().settings().getBool(prefix + "stats");
   myConsole[set] = instance().settings().getString(prefix + "console") == "7800" ? 1 : 0;
@@ -505,6 +489,8 @@ void DeveloperDialog::loadSettings(SettingsSet set)
   myUndrivenPins[set] = instance().settings().getBool(prefix + "tiadriven");
   // Thumb ARM emulation exception
   myThumbException[set] = instance().settings().getBool(prefix + "thumb.trapfatal");
+  // AtariVox/SaveKey EEPROM access
+  myEEPROMAccess[set] = instance().settings().getBool(prefix + "eepromaccess");
 
   // Debug colors
   myDebugColors[set] = instance().settings().getBool(prefix + "debugcolors");
@@ -525,7 +511,7 @@ void DeveloperDialog::loadSettings(SettingsSet set)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DeveloperDialog::saveSettings(SettingsSet set)
 {
-  string prefix = set == SettingsSet::player ? "plr." : "dev.";
+  const string& prefix = set == SettingsSet::player ? "plr." : "dev.";
 
   instance().settings().setValue(prefix + "stats", myFrameStats[set]);
   instance().settings().setValue(prefix + "console", myConsole[set] == 1 ? "7800" : "2600");
@@ -537,6 +523,8 @@ void DeveloperDialog::saveSettings(SettingsSet set)
   instance().settings().setValue(prefix + "tiadriven", myUndrivenPins[set]);
   // Thumb ARM emulation exception
   instance().settings().setValue(prefix + "thumb.trapfatal", myThumbException[set]);
+  // AtariVox/SaveKey EEPROM access
+  instance().settings().setValue(prefix + "eepromaccess", myEEPROMAccess[set]);
 
   // Debug colors
   instance().settings().setValue(prefix + "debugcolors", myDebugColors[set]);
@@ -572,6 +560,8 @@ void DeveloperDialog::getWidgetStates(SettingsSet set)
   myUndrivenPins[set] = myUndrivenPinsWidget->getState();
   // Thumb ARM emulation exception
   myThumbException[set] = myThumbExceptionWidget->getState();
+  // AtariVox/SaveKey EEPROM access
+  myEEPROMAccess[set] = myEEPROMAccessWidget->getState();
 
   // Debug colors
   myDebugColors[set] = myDebugColorsWidget->getState();
@@ -607,6 +597,8 @@ void DeveloperDialog::setWidgetStates(SettingsSet set)
   myUndrivenPinsWidget->setState(myUndrivenPins[set]);
   // Thumb ARM emulation exception
   myThumbExceptionWidget->setState(myThumbException[set]);
+  // AtariVox/SaveKey EEPROM access
+  myEEPROMAccessWidget->setState(myEEPROMAccess[set]);
 
   handleConsole();
 
@@ -661,9 +653,7 @@ void DeveloperDialog::loadConfig()
   w = ds.w; h = ds.h;
 
   myDebuggerWidthSlider->setValue(w);
-  myDebuggerWidthLabel->setValue(w);
   myDebuggerHeightSlider->setValue(h);
-  myDebuggerHeightLabel->setValue(h);
 
   // Debugger font size
   string size = instance().settings().getString("dbg.fontsize");
@@ -672,6 +662,9 @@ void DeveloperDialog::loadConfig()
   // Debugger font style
   int style = instance().settings().getInt("dbg.fontstyle");
   myDebuggerFontStyle->setSelected(style, "0");
+
+  // Ghost reads trap
+  myGhostReadsTrapWidget->setState(instance().settings().getBool("dbg.ghostreadstrap"));
 
   handleFontSize();
 #endif
@@ -725,6 +718,11 @@ void DeveloperDialog::saveConfig()
                                  myDebuggerHeightSlider->getValue()));
   // Debugger font size
   instance().settings().setValue("dbg.fontsize", myDebuggerFontSize->getSelectedTag().toString());
+
+  // Ghost reads trap
+  instance().settings().setValue("dbg.ghostreadstrap", myGhostReadsTrapWidget->getState());
+  if(instance().hasConsole())
+    instance().console().system().m6502().setGhostReadsTrap(myGhostReadsTrapWidget->getState());
 #endif
 }
 
@@ -741,12 +739,14 @@ void DeveloperDialog::setDefaults()
       myConsole[set] = 0;
       // Randomization
       myRandomBank[set] = devSettings ? true : false;
-      myRandomizeRAM[set] = devSettings ? true : false;
-      myRandomizeCPU[set] = devSettings ? "SAXYP" : "";
+      myRandomizeRAM[set] = true;
+      myRandomizeCPU[set] = devSettings ? "SAXYP" : "AXYP";
       // Undriven TIA pins
       myUndrivenPins[set] = devSettings ? true : false;
       // Thumb ARM emulation exception
       myThumbException[set] = devSettings ? true : false;
+      // AtariVox/SaveKey EEPROM access
+      myEEPROMAccess[set] = devSettings ? true : false;
 
       setWidgetStates(set);
       break;
@@ -780,11 +780,12 @@ void DeveloperDialog::setDefaults()
       uInt32 w = std::min(instance().frameBuffer().desktopSize().w, uInt32(DebuggerDialog::kMediumFontMinW));
       uInt32 h = std::min(instance().frameBuffer().desktopSize().h, uInt32(DebuggerDialog::kMediumFontMinH));
       myDebuggerWidthSlider->setValue(w);
-      myDebuggerWidthLabel->setValue(w);
       myDebuggerHeightSlider->setValue(h);
-      myDebuggerHeightLabel->setValue(h);
       myDebuggerFontSize->setSelected("medium");
       myDebuggerFontStyle->setSelected("0");
+
+      myGhostReadsTrapWidget->setState(true);
+
       handleFontSize();
 #endif
       break;
@@ -869,14 +870,6 @@ void DeveloperDialog::handleCommand(CommandSender* sender, int cmd, int data, in
       break;
 
 #ifdef DEBUGGER_SUPPORT
-    case kDWidthChanged:
-      myDebuggerWidthLabel->setValue(myDebuggerWidthSlider->getValue());
-      break;
-
-    case kDHeightChanged:
-      myDebuggerHeightLabel->setValue(myDebuggerHeightSlider->getValue());
-      break;
-
     case kDFontSizeChanged:
       handleFontSize();
       break;
@@ -949,11 +942,7 @@ void DeveloperDialog::handleTimeMachine()
   bool enable = myTimeMachineWidget->getState();
 
   myStateSizeWidget->setEnabled(enable);
-  myStateSizeLabelWidget->setEnabled(enable);
-
   myUncompressedWidget->setEnabled(enable);
-  myUncompressedLabelWidget->setEnabled(enable);
-
   myStateIntervalWidget->setEnabled(enable);
 
   uInt32 size = myStateSizeWidget->getValue();
@@ -978,7 +967,6 @@ void DeveloperDialog::handleSize()
   if(horizon == -1)
     horizon = 0;
 
-  myStateSizeLabelWidget->setValue(size);
   // adapt horizon and interval
   do
   {
@@ -992,14 +980,14 @@ void DeveloperDialog::handleSize()
       }
     }
     if(!found)
-      interval--;
+      --interval;
   } while(!found);
 
   if(size < uncompressed)
     myUncompressedWidget->setValue(size);
   myStateIntervalWidget->setSelectedIndex(interval);
   myStateHorizonWidget->setSelectedIndex(i);
-  myStateHorizonWidget->setEnabled(size > uncompressed);
+  myStateHorizonWidget->setEnabled(myTimeMachineWidget->getState() && size > uncompressed);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1008,11 +996,9 @@ void DeveloperDialog::handleUncompressed()
   uInt32 size = myStateSizeWidget->getValue();
   uInt32 uncompressed = myUncompressedWidget->getValue();
 
-  myUncompressedLabelWidget->setValue(myUncompressedWidget->getValue());
-
   if(size < uncompressed)
     myStateSizeWidget->setValue(uncompressed);
-  myStateHorizonWidget->setEnabled(size > uncompressed);
+  myStateHorizonWidget->setEnabled(myTimeMachineWidget->getState() && size > uncompressed);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1104,7 +1090,7 @@ void DeveloperDialog::handleDebugColours(int idx, int color)
     return;
   }
 
-  static constexpr int dbg_color[2][DEBUG_COLORS] = {
+  static constexpr ColorId dbg_color[3][DEBUG_COLORS] = {
     {
       TIA::FixedColor::NTSC_RED,
       TIA::FixedColor::NTSC_ORANGE,
@@ -1120,11 +1106,21 @@ void DeveloperDialog::handleDebugColours(int idx, int color)
       TIA::FixedColor::PAL_GREEN,
       TIA::FixedColor::PAL_PURPLE,
       TIA::FixedColor::PAL_BLUE
+    },
+    {
+      TIA::FixedColor::SECAM_RED,
+      TIA::FixedColor::SECAM_ORANGE,
+      TIA::FixedColor::SECAM_YELLOW,
+      TIA::FixedColor::SECAM_GREEN,
+      TIA::FixedColor::SECAM_PURPLE,
+      TIA::FixedColor::SECAM_BLUE
     }
   };
 
-  int mode = instance().console().tia().frameLayout() == FrameLayout::ntsc ? 0 : 1;
-  myDbgColourSwatch[idx]->setColor(dbg_color[mode][color]);
+  int timing = instance().console().tia().consoleTiming() == ConsoleTiming::ntsc ? 0
+    : instance().console().tia().consoleTiming() == ConsoleTiming::pal ? 1 : 2;
+
+  myDbgColourSwatch[idx]->setColor(dbg_color[timing][color]);
   myDbgColour[idx]->setSelectedIndex(color);
 
   // make sure the selected debug colors are all different
@@ -1136,7 +1132,7 @@ void DeveloperDialog::handleDebugColours(int idx, int color)
     usedCol[i] = false;
     for(int j = 0; j < DEBUG_COLORS; ++j)
     {
-      if(myDbgColourSwatch[j]->getColor() == dbg_color[mode][i])
+      if(myDbgColourSwatch[j]->getColor() == dbg_color[timing][i])
       {
         usedCol[i] = true;
         break;
@@ -1146,14 +1142,14 @@ void DeveloperDialog::handleDebugColours(int idx, int color)
   // check if currently changed color was used somewhere else
   for(int i = 0; i < DEBUG_COLORS; ++i)
   {
-    if (i != idx && myDbgColourSwatch[i]->getColor() == dbg_color[mode][color])
+    if (i != idx && myDbgColourSwatch[i]->getColor() == dbg_color[timing][color])
     {
       // if already used, change the other color to an unused one
       for(int j = 0; j < DEBUG_COLORS; ++j)
       {
         if(!usedCol[j])
         {
-          myDbgColourSwatch[i]->setColor(dbg_color[mode][j]);
+          myDbgColourSwatch[i]->setColor(dbg_color[timing][j]);
           myDbgColour[i]->setSelectedIndex(j);
           break;
         }
@@ -1169,12 +1165,12 @@ void DeveloperDialog::handleDebugColours(const string& colors)
   {
     switch(colors[i])
     {
-      case 'r':  handleDebugColours(i, 0);  break;
-      case 'o':  handleDebugColours(i, 1);  break;
-      case 'y':  handleDebugColours(i, 2);  break;
-      case 'g':  handleDebugColours(i, 3);  break;
-      case 'p':  handleDebugColours(i, 4);  break;
-      case 'b':  handleDebugColours(i, 5);  break;
+      case 'r': handleDebugColours(i, 0);  break;
+      case 'o': handleDebugColours(i, 1);  break;
+      case 'y': handleDebugColours(i, 2);  break;
+      case 'g': handleDebugColours(i, 3);  break;
+      case 'p': handleDebugColours(i, 4);  break;
+      case 'b': handleDebugColours(i, 5);  break;
       default:                              break;
     }
   }
@@ -1183,6 +1179,7 @@ void DeveloperDialog::handleDebugColours(const string& colors)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DeveloperDialog::handleFontSize()
 {
+#ifdef DEBUGGER_SUPPORT
   uInt32 minW, minH;
   int fontSize = myDebuggerFontSize->getSelected();
 
@@ -1206,15 +1203,10 @@ void DeveloperDialog::handleFontSize()
 
   myDebuggerWidthSlider->setMinValue(minW);
   if(minW > uInt32(myDebuggerWidthSlider->getValue()))
-  {
     myDebuggerWidthSlider->setValue(minW);
-    myDebuggerWidthLabel->setValue(minW);
-  }
 
   myDebuggerHeightSlider->setMinValue(minH);
   if(minH > uInt32(myDebuggerHeightSlider->getValue()))
-  {
     myDebuggerHeightSlider->setValue(minH);
-    myDebuggerHeightLabel->setValue(minH);
-  }
+#endif
 }

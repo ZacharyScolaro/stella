@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -23,6 +23,7 @@ class GuiObject;
 class EditTextWidget;
 class PopUpWidget;
 class StaticTextWidget;
+class RadioButtonGroup;
 class TabWidget;
 class SliderWidget;
 
@@ -43,7 +44,15 @@ class GameInfoDialog : public Dialog, public CommandSender
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
 
     void setDefaults() override;
-    void loadView();
+
+    // load the properties for the 'Cartridge' tab
+    void loadCartridgeProperties(const Properties& props);
+    // load the properties for the 'Console' tab
+    void loadConsoleProperties(const Properties& props);
+    // load the properties for the 'Controller' tab
+    void loadControllerProperties(const Properties& props);
+    // load the properties for the 'Display' tab
+    void loadDisplayProperties(const Properties& props);
 
     void updateControllerStates();
     void eraseEEPROM();
@@ -58,13 +67,14 @@ class GameInfoDialog : public Dialog, public CommandSender
     EditTextWidget*   myModelNo;
     EditTextWidget*   myRarity;
     EditTextWidget*   myNote;
-    PopUpWidget*      mySound;
     PopUpWidget*      myType;
+    StaticTextWidget* myTypeDetected;
+    CheckboxWidget*   mySound;
 
     // Console properties
-    PopUpWidget* myLeftDiff;
-    PopUpWidget* myRightDiff;
-    PopUpWidget* myTVType;
+    RadioButtonGroup* myLeftDiffGroup;
+    RadioButtonGroup* myRightDiffGroup;
+    RadioButtonGroup* myTVTypeGroup;
 
     // Controller properties
     StaticTextWidget* myP0Label;
@@ -76,26 +86,24 @@ class GameInfoDialog : public Dialog, public CommandSender
     StaticTextWidget* myEraseEEPROMLabel;
     ButtonWidget*     myEraseEEPROMButton;
     StaticTextWidget* myEraseEEPROMInfo;
-    PopUpWidget*      myMouseControl;
+    CheckboxWidget*   myMouseControl;
     PopUpWidget*      myMouseX;
     PopUpWidget*      myMouseY;
     SliderWidget*     myMouseRange;
-    StaticTextWidget* myMouseRangeLabel;
 
     // Display properties
     PopUpWidget*      myFormat;
+    StaticTextWidget* myFormatDetected;
     SliderWidget*     myYStart;
-    StaticTextWidget* myYStartLabel;
+    StaticTextWidget* myYStartDetected;
     SliderWidget*     myHeight;
-    StaticTextWidget* myHeightLabel;
+    StaticTextWidget* myHeightDetected;
     CheckboxWidget*   myPhosphor;
     SliderWidget*     myPPBlend;
-    StaticTextWidget* myPPBlendLabel;
 
     enum {
       kLeftCChanged    = 'LCch',
       kRightCChanged   = 'RCch',
-      kMRangeChanged   = 'MRch',
       kYStartChanged   = 'YSch',
       kHeightChanged   = 'HTch',
       kPhosphorChanged = 'PPch',
@@ -106,12 +114,6 @@ class GameInfoDialog : public Dialog, public CommandSender
 
     // Game properties for currently loaded ROM
     Properties myGameProperties;
-
-    // Indicates that we've got a valid properties entry
-    bool myPropertiesLoaded;
-
-    // Indicates that the default properties have been loaded
-    bool myDefaultsSelected;
 
   private:
     // Following constructors and assignment operators not supported

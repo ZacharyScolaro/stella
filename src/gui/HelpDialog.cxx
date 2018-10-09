@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -24,11 +24,10 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 HelpDialog::HelpDialog(OSystem& osystem, DialogContainer& parent,
                        const GUI::Font& font)
-  : Dialog(osystem, parent),
+  : Dialog(osystem, parent, font, "Help"),
     myPage(1),
     myNumPages(5)
 {
-  const string ELLIPSIS = "\x1d";
   const int lineHeight   = font.getLineHeight(),
             fontWidth    = font.getMaxCharWidth(),
             fontHeight   = font.getFontHeight(),
@@ -39,7 +38,7 @@ HelpDialog::HelpDialog(OSystem& osystem, DialogContainer& parent,
 
   // Set real dimensions
   _w = 46 * fontWidth + 10;
-  _h = 12 * lineHeight + 20;
+  _h = 12 * lineHeight + 20 + _th;
 
   // Add Previous, Next and Close buttons
   xpos = 10;  ypos = _h - buttonHeight - 10;
@@ -49,7 +48,7 @@ HelpDialog::HelpDialog(OSystem& osystem, DialogContainer& parent,
   myPrevButton->clearFlags(WIDGET_ENABLED);
   wid.push_back(myPrevButton);
 
-  xpos += buttonWidth + 7;
+  xpos += buttonWidth + 8;
   myNextButton =
     new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
                      "Next", GuiObject::kNextCmd);
@@ -60,15 +59,15 @@ HelpDialog::HelpDialog(OSystem& osystem, DialogContainer& parent,
     new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
                      "Close", GuiObject::kCloseCmd);
   wid.push_back(b);
-  addOKWidget(b);  addCancelWidget(b);
+  addCancelWidget(b);
 
-  xpos = 5;  ypos = 5;
+  xpos = 5;  ypos = 5 + _th;
   myTitle = new StaticTextWidget(this, font, xpos, ypos, _w - 10, fontHeight,
                                  "", TextAlign::Center);
 
   int lwidth = 12 * fontWidth;
   xpos += 5;  ypos += lineHeight + 4;
-  for(uInt8 i = 0; i < kLINES_PER_PAGE; i++)
+  for(uInt8 i = 0; i < kLINES_PER_PAGE; ++i)
   {
     myKey[i] =
       new StaticTextWidget(this, font, xpos, ypos, lwidth,
@@ -164,7 +163,7 @@ void HelpDialog::updateStrings(uInt8 page, uInt8 lines, string& title)
       ADD_BIND("Remapped Eve", "nts");
       ADD_TEXT("Most other commands can be");
       ADD_TEXT("remapped. Please consult the");
-      ADD_TEXT("'Input Settings" + ELLIPSIS + "' menu for");
+      ADD_TEXT("'Options/Input" + ELLIPSIS + "' dialog for");
       ADD_TEXT("more information.");
       break;
   }
@@ -180,13 +179,11 @@ void HelpDialog::displayInfo()
   updateStrings(myPage, kLINES_PER_PAGE, titleStr);
 
   myTitle->setLabel(titleStr);
-  for(uInt8 i = 0; i < kLINES_PER_PAGE; i++)
+  for(uInt8 i = 0; i < kLINES_PER_PAGE; ++i)
   {
     myKey[i]->setLabel(myKeyStr[i]);
     myDesc[i]->setLabel(myDescStr[i]);
   }
-
-  _dirty = true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -196,7 +193,7 @@ void HelpDialog::handleCommand(CommandSender* sender, int cmd,
   switch(cmd)
   {
     case GuiObject::kNextCmd:
-      myPage++;
+      ++myPage;
       if(myPage >= myNumPages)
         myNextButton->clearFlags(WIDGET_ENABLED);
       if(myPage >= 2)
@@ -206,7 +203,7 @@ void HelpDialog::handleCommand(CommandSender* sender, int cmd,
       break;
 
     case GuiObject::kPrevCmd:
-      myPage--;
+      --myPage;
       if(myPage <= myNumPages)
         myNextButton->setFlags(WIDGET_ENABLED);
       if(myPage <= 1)

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -37,10 +37,10 @@ Cartridge3EWidget::Cartridge3EWidget(
           "First 2K (RAM) selected by writing to $3E\n"
           "  $F000 - $F3FF (R), $F400 - $F7FF (W)\n"
           "Last 2K always points to last 2K of ROM\n";
-  if(cart.myStartBank < myNumRomBanks)
-    info << "Startup bank = " << cart.myStartBank << " (ROM)\n";
+  if(cart.startBank() < myNumRomBanks)
+    info << "Startup bank = " << cart.startBank() << " (ROM)\n";
   else
-    info << "Startup bank = " << (cart.myStartBank-myNumRomBanks) << " (RAM)\n";
+    info << "Startup bank = " << (cart.startBank()-myNumRomBanks) << " (RAM)\n";
 
   // Eventually, we should query this from the debugger/disassembler
   uInt16 start = (cart.myImage[size-3] << 8) | cart.myImage[size-4];
@@ -90,10 +90,10 @@ void Cartridge3EWidget::saveOldState()
 {
   myOldState.internalram.clear();
 
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
-  {
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
-  }
+
+  myOldState.bank = myCart.myCurrentBank;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -101,13 +101,13 @@ void Cartridge3EWidget::loadConfig()
 {
   if(myCart.myCurrentBank < 256)
   {
-    myROMBank->setSelectedIndex(myCart.myCurrentBank % myNumRomBanks);
-    myRAMBank->setSelectedMax();
+    myROMBank->setSelectedIndex(myCart.myCurrentBank % myNumRomBanks, myOldState.bank != myCart.myCurrentBank);
+    myRAMBank->setSelectedMax(myOldState.bank >= 256);
   }
   else
   {
-    myROMBank->setSelectedMax();
-    myRAMBank->setSelectedIndex(myCart.myCurrentBank - 256);
+    myROMBank->setSelectedMax(myOldState.bank < 256);
+    myRAMBank->setSelectedIndex(myCart.myCurrentBank - 256, myOldState.bank != myCart.myCurrentBank);
   }
 
   CartDebugWidget::loadConfig();
@@ -117,7 +117,7 @@ void Cartridge3EWidget::loadConfig()
 void Cartridge3EWidget::handleCommand(CommandSender* sender,
                                       int cmd, int data, int id)
 {
-  int bank = -1;
+  uInt16 bank = 0;
 
   if(cmd == kROMBankChanged)
   {

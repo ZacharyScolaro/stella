@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,6 +20,7 @@
 
 #include <png.h>
 
+class OSystem;
 class FrameBuffer;
 class FBSurface;
 class Properties;
@@ -36,7 +37,7 @@ class Properties;
 class PNGLibrary
 {
   public:
-    PNGLibrary(const FrameBuffer& fb);
+    explicit PNGLibrary(OSystem& osystem);
 
     /**
       Read a PNG image from the specified file into a FBSurface structure,
@@ -82,8 +83,51 @@ class PNGLibrary
                    const GUI::Rect& rect = GUI::EmptyRect,
                    const VariantList& comments = EmptyVarList);
 
+    /**
+      Called at regular intervals, and used to determine whether a
+      continuous snapshot is due to be taken.
+
+      @param time  The current time in microseconds
+    */
+    void updateTime(uInt64 time);
+
+    /**
+      Answer whether continuous snapshot mode is enabled.
+    */
+    bool continuousSnapEnabled() const { return mySnapInterval > 0; }
+
+    /**
+      Enable/disable continuous snapshot mode.
+
+      @param perFrame  Toggle snapshots every frame, or that specified by
+                       'ssinterval' setting.
+    */
+    void toggleContinuousSnapshots(bool perFrame);
+
+    /**
+      Set the number of seconds between taking a snapshot in
+      continuous snapshot mode.  Setting an interval of 0 disables
+      continuous snapshots.
+
+      @param interval  Interval in seconds between snapshots
+    */
+    void setContinuousSnapInterval(uInt32 interval);
+
+    /**
+      Create a new snapshot based on the name of the ROM, and also
+      optionally using the number given as a parameter.
+
+      @param number  Optional number to append to the snapshot name
+    */
+    void takeSnapshot(uInt32 number = 0);
+
   private:
-    const FrameBuffer& myFB;
+    // Global OSystem object
+    OSystem& myOSystem;
+
+    // Used for continuous snapshot mode
+    uInt32 mySnapInterval;
+    uInt32 mySnapCounter;
 
     // The following data remains between invocations of allocateStorage,
     // and is only changed when absolutely necessary.

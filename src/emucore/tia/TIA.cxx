@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -23,6 +23,8 @@
 #include "DelayQueueIteratorImpl.hxx"
 #include "TIAConstants.hxx"
 #include "frame-manager/FrameManager.hxx"
+#include "AudioQueue.hxx"
+#include "DispatchResult.hxx"
 
 #ifdef DEBUGGER_SUPPORT
   #include "CartDebug.hxx"
@@ -65,9 +67,8 @@ enum ResxCounter: uInt8 {
 static constexpr uInt8 resxLateHblankThreshold = 73;
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-TIA::TIA(Console& console, Sound& sound, Settings& settings)
+TIA::TIA(Console& console, Settings& settings)
   : myConsole(console),
-    mySound(sound),
     mySettings(settings),
     myFrameManager(nullptr),
     myPlayfield(~CollisionMask::playfield & 0x7FFF),
@@ -117,6 +118,12 @@ void TIA::setFrameManager(AbstractFrameManager *frameManager)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::setAudioQueue(shared_ptr<AudioQueue> queue)
+{
+  myAudio.setAudioQueue(queue);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIA::clearFrameManager()
 {
   if (!myFrameManager) return;
@@ -137,8 +144,7 @@ void TIA::reset()
   myHstate = HState::blank;
   myCollisionMask = 0;
   myLinesSinceChange = 0;
-  myCollisionUpdateRequired = false;
-  myAutoFrameEnabled = false;
+  myCollisionUpdateRequired = myCollisionUpdateScheduled = false;
   myColorLossEnabled = myColorLossActive = false;
   myColorHBlank = 0;
   myLastCycle = 0;
@@ -159,34 +165,38 @@ void TIA::reset()
   myInput0.reset();
   myInput1.reset();
 
+  myAudio.reset();
+
   myTimestamp = 0;
   for (PaddleReader& paddleReader : myPaddleReaders)
     paddleReader.reset(myTimestamp);
 
-  mySound.reset();
   myDelayQueue.reset();
-
-  if (myFrameManager) myFrameManager->reset();
 
   myCyclesAtFrameStart = 0;
 
-  frameReset();  // Recalculate the size of the display
+  if (myFrameManager)
+  {
+    myFrameManager->reset();
+    enableColorLoss(mySettings.getBool(mySettings.getBool("dev.settings") ? "dev.colorloss" : "plr.colorloss"));
+  }
+
+  myFrontBufferScanlines = myFrameBufferScanlines = 0;
+
+  myFramesSinceLastRender = 0;
 
   // Must be done last, after all other items have reset
   enableFixedColors(mySettings.getBool(mySettings.getBool("dev.settings") ? "dev.debugcolors" : "plr.debugcolors"));
   setFixedColorPalette(mySettings.getString("tia.dbgcolors"));
 
+  // Blank the various framebuffers; they may contain graphical garbage
+  memset(myBackBuffer, 0, 160 * TIAConstants::frameBufferHeight);
+  memset(myFrontBuffer, 0, 160 * TIAConstants::frameBufferHeight);
+  memset(myFramebuffer, 0, 160 * TIAConstants::frameBufferHeight);
+
 #ifdef DEBUGGER_SUPPORT
   createAccessBase();
 #endif // DEBUGGER_SUPPORT
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::frameReset()
-{
-  memset(myFramebuffer, 0, 160 * TIAConstants::frameBufferHeight);
-  myAutoFrameEnabled = mySettings.getInt("framerate") <= 0;
-  enableColorLoss(mySettings.getBool("dev.settings") ? "dev.colorloss" : "plr.colorloss");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -223,10 +233,6 @@ bool TIA::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
-    if(!mySound.save(out)) return false;
-
     if(!myDelayQueue.save(out))   return false;
     if(!myFrameManager->save(out)) return false;
 
@@ -237,6 +243,7 @@ bool TIA::save(Serializer& out) const
     if(!myPlayer0.save(out))    return false;
     if(!myPlayer1.save(out))    return false;
     if(!myBall.save(out))       return false;
+    if(!myAudio.save(out))      return false;
 
     for (const PaddleReader& paddleReader : myPaddleReaders)
       if(!paddleReader.save(out)) return false;
@@ -253,6 +260,7 @@ bool TIA::save(Serializer& out) const
     out.putInt(myXAtRenderingStart);
 
     out.putBool(myCollisionUpdateRequired);
+    out.putBool(myCollisionUpdateScheduled);
     out.putInt(myCollisionMask);
 
     out.putInt(myMovementClock);
@@ -271,13 +279,14 @@ bool TIA::save(Serializer& out) const
 
     out.putByte(myColorHBlank);
 
-    out.putDouble(myTimestamp);
-
-    out.putBool(myAutoFrameEnabled);
+    out.putLong(myTimestamp);
 
     out.putByteArray(myShadowRegisters, 64);
 
     out.putLong(myCyclesAtFrameStart);
+
+    out.putInt(myFrameBufferScanlines);
+    out.putInt(myFrontBufferScanlines);
   }
   catch(...)
   {
@@ -293,11 +302,6 @@ bool TIA::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
-    if(!mySound.load(in)) return false;
-
     if(!myDelayQueue.load(in))   return false;
     if(!myFrameManager->load(in)) return false;
 
@@ -308,6 +312,7 @@ bool TIA::load(Serializer& in)
     if(!myPlayer0.load(in))    return false;
     if(!myPlayer1.load(in))    return false;
     if(!myBall.load(in))       return false;
+    if(!myAudio.load(in))       return false;
 
     for (PaddleReader& paddleReader : myPaddleReaders)
       if(!paddleReader.load(in)) return false;
@@ -324,6 +329,7 @@ bool TIA::load(Serializer& in)
     myXAtRenderingStart = in.getInt();
 
     myCollisionUpdateRequired = in.getBool();
+    myCollisionUpdateScheduled = in.getBool();
     myCollisionMask = in.getInt();
 
     myMovementClock = in.getInt();
@@ -342,13 +348,14 @@ bool TIA::load(Serializer& in)
 
     myColorHBlank = in.getByte();
 
-    myTimestamp = in.getDouble();
-
-    myAutoFrameEnabled = in.getBool();
+    myTimestamp = in.getLong();
 
     in.getByteArray(myShadowRegisters, 64);
 
     myCyclesAtFrameStart = in.getLong();
+
+    myFrameBufferScanlines = in.getInt();
+    myFrontBufferScanlines = in.getInt();
   }
   catch(...)
   {
@@ -394,7 +401,7 @@ void TIA::bindToControllers()
     }
   );
 
-  for (uInt8 i = 0; i < 4; i++)
+  for (uInt8 i = 0; i < 4; ++i)
     updatePaddle(i);
 }
 
@@ -519,33 +526,35 @@ bool TIA::poke(uInt16 address, uInt8 value)
 
       break;
 
-    ////////////////////////////////////////////////////////////
-    // FIXME - rework this when we add the new sound core
     case AUDV0:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel0().audv(value);
       myShadowRegisters[address] = value;
       break;
+
     case AUDV1:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel1().audv(value);
       myShadowRegisters[address] = value;
       break;
+
     case AUDF0:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel0().audf(value);
       myShadowRegisters[address] = value;
       break;
+
     case AUDF1:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel1().audf(value);
       myShadowRegisters[address] = value;
       break;
+
     case AUDC0:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel0().audc(value);
       myShadowRegisters[address] = value;
       break;
+
     case AUDC1:
-      mySound.set(address, value, mySystem->cycles());
+      myAudio.channel1().audc(value);
       myShadowRegisters[address] = value;
       break;
-    ////////////////////////////////////////////////////////////
 
     case HMOVE:
       myDelayQueue.push(HMOVE, value, Delay::hmove);
@@ -775,7 +784,10 @@ bool TIA::saveDisplay(Serializer& out) const
 {
   try
   {
-    out.putByteArray(myFramebuffer, 160*TIAConstants::frameBufferHeight);
+    out.putByteArray(myFramebuffer, 160* TIAConstants::frameBufferHeight);
+    out.putByteArray(myBackBuffer, 160 * TIAConstants::frameBufferHeight);
+    out.putByteArray(myFrontBuffer, 160 * TIAConstants::frameBufferHeight);
+    out.putInt(myFramesSinceLastRender);
   }
   catch(...)
   {
@@ -792,7 +804,10 @@ bool TIA::loadDisplay(Serializer& in)
   try
   {
     // Reset frame buffer pointer and data
-    in.getByteArray(myFramebuffer, 160*TIAConstants::frameBufferHeight);
+    in.getByteArray(myFramebuffer, 160 * TIAConstants::frameBufferHeight);
+    in.getByteArray(myBackBuffer, 160 * TIAConstants::frameBufferHeight);
+    in.getByteArray(myFrontBuffer, 160 * TIAConstants::frameBufferHeight);
+    myFramesSinceLastRender = in.getInt();
   }
   catch(...)
   {
@@ -804,18 +819,39 @@ bool TIA::loadDisplay(Serializer& in)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void TIA::update()
+void TIA::update(DispatchResult& result, uInt64 maxCycles)
 {
-  mySystem->m6502().execute(25000);
+  mySystem->m6502().execute(maxCycles, result);
+
+  updateEmulation();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::renderToFrameBuffer()
+{
+  if (myFramesSinceLastRender == 0) return;
+
+  myFramesSinceLastRender = 0;
+
+  memcpy(myFramebuffer, myFrontBuffer, 160 * TIAConstants::frameBufferHeight);
+
+  myFrameBufferScanlines = myFrontBufferScanlines;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::update(uInt64 maxCycles)
+{
+  DispatchResult dispatchResult;
+
+  update(dispatchResult, maxCycles);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::enableColorLoss(bool enabled)
 {
-  if (consoleTiming() != ConsoleTiming::pal)
-    return false;
+  bool allowColorLoss = consoleTiming() == ConsoleTiming::pal;
 
-  if(enabled)
+  if(allowColorLoss && enabled)
   {
     myColorLossEnabled = true;
     myColorLossActive = myFrameManager->scanlinesLastFrame() & 0x1;
@@ -833,7 +869,7 @@ bool TIA::enableColorLoss(bool enabled)
     myBackground.applyColorLoss();
   }
 
-  return true;
+  return allowColorLoss;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -928,18 +964,16 @@ bool TIA::toggleCollisions()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool TIA::enableFixedColors(bool enable)
 {
-  // This will be called during reset at a point where no frame manager
-  // instance is available, so we guard aginst this here.
-  int layout = 0;
-  if (myFrameManager) layout = myFrameManager->layout() == FrameLayout::pal ? 1 : 0;
+  int timing = consoleTiming() == ConsoleTiming::ntsc ? 0
+    : consoleTiming() == ConsoleTiming::pal ? 1 : 2;
 
-  myMissile0.setDebugColor(myFixedColorPalette[layout][FixedObject::M0]);
-  myMissile1.setDebugColor(myFixedColorPalette[layout][FixedObject::M1]);
-  myPlayer0.setDebugColor(myFixedColorPalette[layout][FixedObject::P0]);
-  myPlayer1.setDebugColor(myFixedColorPalette[layout][FixedObject::P1]);
-  myBall.setDebugColor(myFixedColorPalette[layout][FixedObject::BL]);
-  myPlayfield.setDebugColor(myFixedColorPalette[layout][FixedObject::PF]);
-  myBackground.setDebugColor(FixedColor::BK_GREY);
+  myMissile0.setDebugColor(myFixedColorPalette[timing][FixedObject::M0]);
+  myMissile1.setDebugColor(myFixedColorPalette[timing][FixedObject::M1]);
+  myPlayer0.setDebugColor(myFixedColorPalette[timing][FixedObject::P0]);
+  myPlayer1.setDebugColor(myFixedColorPalette[timing][FixedObject::P1]);
+  myBall.setDebugColor(myFixedColorPalette[timing][FixedObject::BL]);
+  myPlayfield.setDebugColor(myFixedColorPalette[timing][FixedObject::PF]);
+  myBackground.setDebugColor(myFixedColorPalette[timing][FixedObject::BK]);
 
   myMissile0.enableDebugColors(enable);
   myMissile1.enableDebugColors(enable);
@@ -968,35 +1002,44 @@ bool TIA::setFixedColorPalette(const string& colors)
       case 'r':
         myFixedColorPalette[0][i] = FixedColor::NTSC_RED;
         myFixedColorPalette[1][i] = FixedColor::PAL_RED;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_RED;
         myFixedColorNames[i] = "Red   ";
         break;
       case 'o':
         myFixedColorPalette[0][i] = FixedColor::NTSC_ORANGE;
         myFixedColorPalette[1][i] = FixedColor::PAL_ORANGE;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_ORANGE;
         myFixedColorNames[i] = "Orange";
         break;
       case 'y':
         myFixedColorPalette[0][i] = FixedColor::NTSC_YELLOW;
         myFixedColorPalette[1][i] = FixedColor::PAL_YELLOW;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_YELLOW;
         myFixedColorNames[i] = "Yellow";
         break;
       case 'g':
         myFixedColorPalette[0][i] = FixedColor::NTSC_GREEN;
         myFixedColorPalette[1][i] = FixedColor::PAL_GREEN;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_GREEN;
         myFixedColorNames[i] = "Green ";
         break;
       case 'b':
         myFixedColorPalette[0][i] = FixedColor::NTSC_BLUE;
         myFixedColorPalette[1][i] = FixedColor::PAL_BLUE;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_BLUE;
         myFixedColorNames[i] = "Blue  ";
         break;
       case 'p':
         myFixedColorPalette[0][i] = FixedColor::NTSC_PURPLE;
         myFixedColorPalette[1][i] = FixedColor::PAL_PURPLE;
+        myFixedColorPalette[2][i] = FixedColor::SECAM_PURPLE;
         myFixedColorNames[i] = "Purple";
         break;
     }
   }
+  myFixedColorPalette[0][TIA::BK] = FixedColor::NTSC_GREY;
+  myFixedColorPalette[1][TIA::BK] = FixedColor::PAL_GREY;
+  myFixedColorPalette[2][TIA::BK] = FixedColor::SECAM_GREY;
 
   // If already in fixed debug colours mode, update the current palette
   if(usingFixedColors())
@@ -1064,8 +1107,7 @@ TIA& TIA::updateScanline()
 {
   // Update frame by one scanline at a time
   uInt32 line = scanlines();
-  while (line == scanlines() && mySystem->m6502().execute(1))
-    updateEmulation();
+  while (line == scanlines() && mySystem->m6502().execute(1));
 
   return *this;
 }
@@ -1074,8 +1116,7 @@ TIA& TIA::updateScanline()
 TIA& TIA::updateScanlineByStep()
 {
   // Update frame by one CPU instruction/color clock
-  if (mySystem->m6502().execute(1))
-    updateEmulation();
+  mySystem->m6502().execute(1);
 
   return *this;
 }
@@ -1085,8 +1126,7 @@ TIA& TIA::updateScanlineByTrace(int target)
 {
   uInt32 count = 100;  // only try up to 100 steps
   while (mySystem->m6502().getPC() != target && count-- &&
-         mySystem->m6502().execute(1))
-    updateEmulation();
+         mySystem->m6502().execute(1));
 
   return *this;
 }
@@ -1145,16 +1185,18 @@ void TIA::onFrameComplete()
   myCyclesAtFrameStart = mySystem->cycles();
 
   if (myXAtRenderingStart > 0)
-    memset(myFramebuffer, 0, myXAtRenderingStart);
+    memset(myBackBuffer, 0, myXAtRenderingStart);
 
   // Blank out any extra lines not drawn this frame
   const Int32 missingScanlines = myFrameManager->missingScanlines();
   if (missingScanlines > 0)
-    memset(myFramebuffer + 160 * myFrameManager->getY(), 0, missingScanlines * 160);
+    memset(myBackBuffer + 160 * myFrameManager->getY(), 0, missingScanlines * 160);
 
-  // Recalculate framerate, attempting to auto-correct for scanline 'jumps'
-  if(myAutoFrameEnabled)
-    myConsole.setFramerate(myFrameManager->frameRate());
+  memcpy(myFrontBuffer, myBackBuffer, 160 * TIAConstants::frameBufferHeight);
+
+  myFrontBufferScanlines = scanlinesLastFrame();
+
+  ++myFramesSinceLastRender;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1168,13 +1210,14 @@ void TIA::onHalt()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIA::cycle(uInt32 colorClocks)
 {
-  for (uInt32 i = 0; i < colorClocks; i++)
+  for (uInt32 i = 0; i < colorClocks; ++i)
   {
     myDelayQueue.execute(
       [this] (uInt8 address, uInt8 value) {delayedWrite(address, value);}
     );
 
-    myCollisionUpdateRequired = false;
+    myCollisionUpdateRequired = myCollisionUpdateScheduled;
+    myCollisionUpdateScheduled = false;
 
     if (myLinesSinceChange < 2) {
       tickMovement();
@@ -1190,7 +1233,11 @@ void TIA::cycle(uInt32 colorClocks)
     if (++myHctr >= 228)
       nextLine();
 
-    myTimestamp++;
+    #ifdef SOUND_SUPPORT
+      myAudio.tick();
+    #endif
+
+    ++myTimestamp;
   }
 }
 
@@ -1213,7 +1260,7 @@ void TIA::tickMovement()
     myMovementInProgress = m;
     myCollisionUpdateRequired = m;
 
-    myMovementClock++;
+    ++myMovementClock;
   }
 }
 
@@ -1233,6 +1280,8 @@ void TIA::tickHblank()
       if (myExtendedHblank) myHstate = HState::frame;
       break;
   }
+
+  if (myExtendedHblank && myHctr > 67) myPlayfield.tick(myHctr - 68 - myHctrDelta);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1261,7 +1310,7 @@ void TIA::applyRsync()
 
   myHctrDelta = 225 - myHctr;
   if (myFrameManager->isRendering())
-    memset(myFramebuffer + myFrameManager->getY() * 160 + x, 0, 160 - x);
+    memset(myBackBuffer + myFrameManager->getY() * 160 + x, 0, 160 - x);
 
   myHctr = 225;
 }
@@ -1275,12 +1324,18 @@ void TIA::nextLine()
 
   myHctr = 0;
 
-  if (!myMovementInProgress && myLinesSinceChange < 2) myLinesSinceChange++;
+  if (!myMovementInProgress && myLinesSinceChange < 2) ++myLinesSinceChange;
 
   myHstate = HState::blank;
   myHctrDelta = 0;
 
   myFrameManager->nextLine();
+  myMissile0.nextLine();
+  myMissile1.nextLine();
+  myPlayer0.nextLine();
+  myPlayer1.nextLine();
+  myBall.nextLine();
+  myPlayfield.nextLine();
 
   if (myFrameManager->isRendering() && myFrameManager->getY() == 0) flushLineCache();
 
@@ -1294,9 +1349,15 @@ void TIA::cloneLastLine()
 
   if (!myFrameManager->isRendering() || y == 0) return;
 
-  uInt8* buffer = myFramebuffer;
+  uInt8* buffer = myBackBuffer;
 
   memcpy(buffer + y * 160, buffer + (y-1) * 160, 160);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::scheduleCollisionUpdate()
+{
+  myCollisionUpdateScheduled = true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1367,7 +1428,7 @@ void TIA::renderPixel(uInt32 x, uInt32 y)
     }
   }
 
-  myFramebuffer[y * 160 + x] = color;
+  myBackBuffer[y * 160 + x] = color;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1380,7 +1441,7 @@ void TIA::flushLineCache()
   if (wasCaching) {
     const auto rewindCycles = myHctr;
 
-    for (myHctr = 0; myHctr < rewindCycles; myHctr++) {
+    for (myHctr = 0; myHctr < rewindCycles; ++myHctr) {
       if (myHstate == HState::blank)
         tickHblank();
       else
@@ -1393,7 +1454,7 @@ void TIA::flushLineCache()
 void TIA::clearHmoveComb()
 {
   if (myFrameManager->isRendering() && myHstate == HState::blank)
-    memset(myFramebuffer + myFrameManager->getY() * 160, myColorHBlank, 8);
+    memset(myBackBuffer + myFrameManager->getY() * 160, myColorHBlank, 8);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1536,7 +1597,7 @@ void TIA::updatePaddle(uInt8 idx)
   }
 
   myPaddleReaders[idx].update(
-    (resistance == Controller::maximumResistance) ? -1 : (double(resistance) / Paddles::MAX_RESISTANCE),
+    (resistance == Controller::MAX_RESISTANCE) ? -1 : (double(resistance) / Paddles::MAX_RESISTANCE),
     myTimestamp,
     consoleTiming()
   );
@@ -1618,18 +1679,104 @@ uInt8 TIA::collCXBLPF() const
   return (myCollisionMask & CollisionMask::ball & CollisionMask::playfield) ? 0x80 : 0;
 }
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP0PF()
+{
+  myCollisionMask ^= (CollisionMask::player0 & CollisionMask::playfield);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP0BL()
+{
+  myCollisionMask ^= (CollisionMask::player0 & CollisionMask::ball);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP0M1()
+{
+  myCollisionMask ^= (CollisionMask::player0 & CollisionMask::missile1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP0M0()
+{
+  myCollisionMask ^= (CollisionMask::player0 & CollisionMask::missile0);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP0P1()
+{
+  myCollisionMask ^= (CollisionMask::player0 & CollisionMask::player1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP1PF()
+{
+  myCollisionMask ^= (CollisionMask::player1 & CollisionMask::playfield);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP1BL()
+{
+  myCollisionMask ^= (CollisionMask::player1 & CollisionMask::ball);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP1M1()
+{
+  myCollisionMask ^= (CollisionMask::player1 & CollisionMask::missile1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollP1M0()
+{
+  myCollisionMask ^= (CollisionMask::player1 & CollisionMask::missile0);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollM0PF()
+{
+  myCollisionMask ^= (CollisionMask::missile0 & CollisionMask::playfield);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollM0BL()
+{
+  myCollisionMask ^= (CollisionMask::missile0 & CollisionMask::ball);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollM0M1()
+{
+  myCollisionMask ^= (CollisionMask::missile0 & CollisionMask::missile1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollM1PF()
+{
+  myCollisionMask ^= (CollisionMask::missile1 & CollisionMask::playfield);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollM1BL()
+{
+  myCollisionMask ^= (CollisionMask::missile1 & CollisionMask::ball);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void TIA::toggleCollBLPF()
+{
+  myCollisionMask ^= (CollisionMask::ball & CollisionMask::playfield);
+}
+
 #ifdef DEBUGGER_SUPPORT
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIA::createAccessBase()
 {
-#ifdef DEBUGGER_SUPPORT
   myAccessBase = make_unique<uInt8[]>(TIA_SIZE);
   memset(myAccessBase.get(), CartDebug::NONE, TIA_SIZE);
   myAccessDelay = make_unique<uInt8[]>(TIA_SIZE);
   memset(myAccessDelay.get(), TIA_DELAY, TIA_SIZE);
-#else
-  myAccessBase = nullptr;
-#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

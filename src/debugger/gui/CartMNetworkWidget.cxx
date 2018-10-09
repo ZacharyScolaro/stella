@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,8 +26,11 @@ CartridgeMNetworkWidget::CartridgeMNetworkWidget(
     int x, int y, int w, int h,
     CartridgeMNetwork& cart)
   : CartDebugWidget(boss, lfont, nfont, x, y, w, h),
-    myCart(cart)
-{}
+    myCart(cart),
+    myLower2K(nullptr),
+    myUpper256B(nullptr)
+{
+}
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeMNetworkWidget::initialize(GuiObject* boss, CartridgeMNetwork& cart, ostringstream& info)
@@ -65,17 +68,18 @@ void CartridgeMNetworkWidget::saveOldState()
 {
   myOldState.internalram.clear();
 
-  for(uInt32 i = 0; i < this->internalRamSize(); i++)
-  {
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
-  }
+
+  myOldState.lowerBank = myCart.myCurrentSlice[0];
+  myOldState.upperBank = myCart.myCurrentRAM;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeMNetworkWidget::loadConfig()
 {
-  myLower2K->setSelectedIndex(myCart.myCurrentSlice[0]);
-  myUpper256B->setSelectedIndex(myCart.myCurrentRAM);
+  myLower2K->setSelectedIndex(myCart.myCurrentSlice[0], myCart.myCurrentSlice[0] != myOldState.lowerBank);
+  myUpper256B->setSelectedIndex(myCart.myCurrentRAM, myCart.myCurrentRAM != myOldState.upperBank);
 
   CartDebugWidget::loadConfig();
 }

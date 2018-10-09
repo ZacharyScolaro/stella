@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -29,14 +29,15 @@ CartridgeFE::CartridgeFE(const BytePtr& image, uInt32 size,
   // Copy the ROM image into my buffer
   memcpy(myImage, image.get(), std::min(8192u, size));
   createCodeAccessBase(8192);
-
-  myStartBank = 0;  // Decathlon requires this, since there is no startup vector in bank 1
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeFE::reset()
 {
-  bank(myStartBank);
+  // Decathlon requires this, since there is no startup vector in bank 1
+  initializeStartBank(0);
+
+  bank(startBank());
   myLastAccessWasFE = false;
 }
 
@@ -139,7 +140,6 @@ bool CartridgeFE::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putShort(myBankOffset);
     out.putBool(myLastAccessWasFE);
   }
@@ -157,9 +157,6 @@ bool CartridgeFE::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myBankOffset = in.getShort();
     myLastAccessWasFE = in.getBool();
   }

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -82,9 +82,9 @@ class ContextMenu : public Dialog, public CommandSender
     bool sendSelectionLast();
 
   private:
-    void handleMouseDown(int x, int y, int button, int clickCount) override;
-    void handleMouseMoved(int x, int y, int button) override;
-    bool handleMouseClicks(int x, int y, int button) override;
+    void handleMouseDown(int x, int y, MouseButton b, int clickCount) override;
+    void handleMouseMoved(int x, int y) override;
+    bool handleMouseClicks(int x, int y, MouseButton b) override;
     void handleMouseWheel(int x, int y, int direction) override;
     void handleKeyDown(StellaKey key, StellaMod mod) override;
     void handleJoyDown(int stick, int button) override;
@@ -118,9 +118,8 @@ class ContextMenu : public Dialog, public CommandSender
     int _selectedOffset, _selectedItem;
     bool _showScroll;
     bool _isScrolling;
-    uInt32 _scrollUpColor, _scrollDnColor;
+    ColorId _scrollUpColor, _scrollDnColor;
 
-    const GUI::Font& _font;
     int _cmd;
 
     uInt32 _xorig, _yorig;

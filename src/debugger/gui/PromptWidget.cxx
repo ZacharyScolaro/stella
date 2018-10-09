@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -18,7 +18,7 @@
 #include "ScrollBarWidget.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
-#include "EventHandler.hxx"
+#include "StellaKeys.hxx"
 #include "Version.hxx"
 #include "Debugger.hxx"
 #include "DebuggerDialog.hxx"
@@ -34,7 +34,9 @@ PromptWidget::PromptWidget(GuiObject* boss, const GUI::Font& font,
                            int x, int y, int w, int h)
   : Widget(boss, font, x, y, w - kScrollBarWidth, h),
     CommandSender(boss),
+    _historySize(0),
     _historyIndex(0),
+    _historyLine(0),
     _makeDirty(false),
     _firstTime(true),
     _exitedEarly(false)
@@ -43,6 +45,7 @@ PromptWidget::PromptWidget(GuiObject* boss, const GUI::Font& font,
            WIDGET_WANTS_TAB | WIDGET_WANTS_RAWDATA;
   _textcolor = kTextColor;
   _bgcolor = kWidColor;
+  _bgcolorlo = kDlgColor;
 
   _kConsoleCharWidth  = font.getMaxCharWidth();
   _kConsoleCharHeight = font.getFontHeight();
@@ -69,9 +72,10 @@ PromptWidget::PromptWidget(GuiObject* boss, const GUI::Font& font,
 void PromptWidget::drawWidget(bool hilite)
 {
 //cerr << "PromptWidget::drawWidget\n";
-  uInt32 fgcolor, bgcolor;
+  ColorId fgcolor, bgcolor;
 
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
 
   // Draw text
   int start = _scrollLine - _linesPerPage + 1;
@@ -86,13 +90,13 @@ void PromptWidget::drawWidget(bool hilite)
       if(c & (1 << 17))  // inverse video flag
       {
         fgcolor = _bgcolor;
-        bgcolor = (c & 0x1ffff) >> 8;
+        bgcolor = ColorId((c & 0x1ffff) >> 8);
         s.fillRect(x, y, _kConsoleCharWidth, _kConsoleCharHeight, bgcolor);
       }
       else
-        fgcolor = c >> 8;
+        fgcolor = ColorId(c >> 8);
 
-      s.drawChar(_font, c & 0x7f, x, y, fgcolor);
+      s.drawChar(_font, c & 0x7f, x, y, onTop ? fgcolor : kColor);
       x += _kConsoleCharWidth;
     }
     y += _kConsoleLineHeight;
@@ -106,7 +110,7 @@ void PromptWidget::drawWidget(bool hilite)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PromptWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void PromptWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
 //  cerr << "PromptWidget::handleMouseDown\n";
 }
@@ -329,7 +333,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_PAGEUP:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         // Don't scroll up when at top of buffer
         if(_scrollLine < _linesPerPage)
@@ -345,7 +349,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_PAGEDOWN:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         // Don't scroll down when at bottom of buffer
         if(_scrollLine >= _promptEndPos / _lineWidth)
@@ -361,7 +365,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_HOME:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         _scrollLine = _firstLineInBuffer + _linesPerPage - 1;
         updateScrollBuffer();
@@ -373,7 +377,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_END:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         _scrollLine = _promptEndPos / _lineWidth;
         if (_scrollLine < _linesPerPage - 1)
@@ -387,7 +391,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_UP:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         if(_scrollLine <= _firstLineInBuffer + _linesPerPage - 1)
           break;
@@ -402,7 +406,7 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     case KBDK_DOWN:
-      if (instance().eventHandler().kbdShift(mod))
+      if (StellaModTest::isShift(mod))
       {
         // Don't scroll down when at bottom of buffer
         if(_scrollLine >= _promptEndPos / _lineWidth)
@@ -432,11 +436,11 @@ bool PromptWidget::handleKeyDown(StellaKey key, StellaMod mod)
       break;
 
     default:
-      if (instance().eventHandler().kbdControl(mod))
+      if (StellaModTest::isControl(mod))
       {
         specialKeys(key);
       }
-      else if (instance().eventHandler().kbdAlt(mod))
+      else if (StellaModTest::isAlt(mod))
       {
         // Placeholder only - this will never be reached
       }
@@ -519,7 +523,7 @@ void PromptWidget::loadConfig()
     // fill the history from the saved breaks, traps and watches commands
     StringList history;
     print(instance().debugger().autoExec(&history));
-    for(uInt32 i = 0; i < history.size(); i++)
+    for(uInt32 i = 0; i < history.size(); ++i)
     {
       addToHistory(history[i].c_str());
     }
@@ -685,7 +689,7 @@ void PromptWidget::textPaste()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void PromptWidget::addToHistory(const char* str)
 {
-  strncpy(_history[_historyIndex], str, kLineBufferSize-1);
+  strncpy(_history[_historyIndex], str, kLineBufferSize - 1);
   _historyIndex = (_historyIndex + 1) % kHistorySize;
   _historyLine = 0;
 
@@ -711,7 +715,7 @@ void PromptWidget::historyScroll(int direction)
   {
     int i;
     for (i = 0; i < _promptEndPos - _promptStartPos; i++)
-      _history[_historyIndex][i] = buffer(_promptStartPos + i);
+      _history[_historyIndex][i] = buffer(_promptStartPos + i); //FIXME: int to char??
 
     _history[_historyIndex][i] = '\0';
   }
@@ -829,13 +833,11 @@ void PromptWidget::putcharIntern(int c)
     nextLine();
   else if(c & 0x80) { // set foreground color to TIA color
                       // don't print or advance cursor
-                      // there are only 128 TIA colors, but
-                      // OverlayColor contains 256 of them
-    _textcolor = (c & 0x7f) << 1;
+    _textcolor = ColorId((c & 0x7f) << 1);
   }
   else if(c && c < 0x1e) { // first actual character is large dash
     // More colors (the regular GUI ones)
-    _textcolor = c + 0x100;
+    _textcolor = ColorId(c + 0x100);
   }
   else if(c == 0x7f) { // toggle inverse video (DEL char)
     _inverse = !_inverse;
@@ -865,6 +867,7 @@ void PromptWidget::drawCaret()
 {
 //cerr << "PromptWidget::drawCaret()\n";
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
 
   int line = _currentPos / _lineWidth;
 
@@ -876,8 +879,8 @@ void PromptWidget::drawCaret()
   int x = _x + 1 + (_currentPos % _lineWidth) * _kConsoleCharWidth;
   int y = _y + displayLine * _kConsoleLineHeight;
 
-  char c = buffer(_currentPos);
-  s.fillRect(x, y, _kConsoleCharWidth, _kConsoleLineHeight, kTextColor);
+  char c = buffer(_currentPos); //FIXME: int to char??
+  s.fillRect(x, y, _kConsoleCharWidth, _kConsoleLineHeight, onTop ? kTextColor : kColor);
   s.drawChar(_font, c, x, y + 2, kBGColor);
 }
 
@@ -928,9 +931,9 @@ bool PromptWidget::saveBuffer(const FilesystemNode& file)
 string PromptWidget::getCompletionPrefix(const StringList& completions)
 {
   // Find the number of characters matching for each of the completions provided
-  for(uInt32 len = 1;; len++)
+  for(uInt32 len = 1;; ++len)
   {
-    for(uInt32 i = 0; i < completions.size(); i++)
+    for(uInt32 i = 0; i < completions.size(); ++i)
     {
       string s1 = completions[i];
       if(s1.length() < len)
@@ -939,7 +942,7 @@ string PromptWidget::getCompletionPrefix(const StringList& completions)
       }
       string find = s1.substr(0, len);
 
-      for(uInt32 j = i + 1; j < completions.size(); j++)
+      for(uInt32 j = i + 1; j < completions.size(); ++j)
       {
         if(!BSPF::startsWithIgnoreCase(completions[j], find))
           return s1.substr(0, len - 1);

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,6 +20,7 @@
 
 class OSystem;
 class Console;
+class EventHandler;
 class TiaInfoWidget;
 class TiaOutputWidget;
 class TiaZoomWidget;
@@ -230,14 +231,19 @@ class Debugger : public DialogContainer
 
     /**
       Normally, accessing RAM or ROM during emulation can possibly trigger
-      bankswitching.  However, when we're in the debugger, we'd like to
-      inspect values without actually triggering bankswitches.  The
+      bankswitching or other inadvertent changes.  However, when we're in
+      the debugger, we'd like to inspect values without restriction.  The
       read/write state must therefore be locked before accessing values,
       and unlocked for normal emulation to occur.
-      (takes mediasource into account)
     */
-    void lockBankswitchState();
-    void unlockBankswitchState();
+    void lockSystem();
+    void unlockSystem();
+
+    /**
+      Answers whether the debugger can be exited.  Currently this only
+      happens when no other dialogs are active.
+    */
+    bool canExit() const;
 
   private:
     /**

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -29,6 +29,7 @@ StringListWidget::StringListWidget(GuiObject* boss, const GUI::Font& font,
                boss->instance().settings().getInt("listdelay") >= 300),
     _hilite(hilite)
 {
+  _bgcolorlo = kDlgColor;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -40,24 +41,37 @@ void StringListWidget::setList(const StringList& list)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void StringListWidget::handleMouseEntered()
+{
+  setFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void StringListWidget::handleMouseLeft()
+{
+  clearFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void StringListWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
   int i, pos, len = int(_list.size());
 
   // Draw a thin frame around the list.
-  s.hLine(_x, _y, _x + _w - 1, kColor);
-  s.hLine(_x, _y + _h - 1, _x + _w - 1, kShadowColor);
-  s.vLine(_x, _y, _y + _h - 1, kColor);
+  s.frameRect(_x, _y, _w + 1, _h, onTop && hilite && _hilite ? kWidColorHi : kColor);
 
   // Draw the list items
   for (i = 0, pos = _currentPos; i < _rows && pos < len; i++, pos++)
   {
     const int y = _y + 2 + _fontHeight * i;
-    uInt32 textColor = kTextColor;
+    ColorId textColor = onTop ? kTextColor : kShadowColor;
 
     // Draw the selected item inverted, on a highlighted background.
-    if (_selectedItem == pos && _hilite)
+    if (onTop && _selectedItem == pos && _hilite)
     {
       if(_hasFocus && !_editMode)
       {
@@ -65,7 +79,7 @@ void StringListWidget::drawWidget(bool hilite)
         textColor = kTextColorInv;
       }
       else
-        s.frameRect(_x + 1, _y + 1 + _fontHeight * i, _w - 1, _fontHeight, kTextColorHi);
+        s.frameRect(_x + 1, _y + 1 + _fontHeight * i, _w - 1, _fontHeight, onTop ? kWidColorHi : kBGColorLo);
     }
 
     GUI::Rect r(getEditRect());

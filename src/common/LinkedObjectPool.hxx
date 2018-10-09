@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -78,10 +78,13 @@ class LinkedObjectPool
       SLOW, but only required for messages
     */
     uInt32 currentIdx() const {
+      if(empty())
+        return 0;
+
       iter it = myCurrent;
       uInt32 idx = 1;
 
-      while(it-- != myList.begin()) idx++;
+      while(it-- != myList.begin()) ++idx;
       return idx;
     }
 
@@ -128,6 +131,12 @@ class LinkedObjectPool
       Return an iterator to the next node to 'current' in the active list.
     */
     const_iter next(const_iter i) const { return std::next(i, 1); }
+
+    /**
+      Canonical iterators from C++ STL.
+    */
+    const_iter cbegin() const { return myList.cbegin(); }
+    const_iter cend() const   { return myList.cend();   }
 
     /**
       Answer whether 'current' is at the specified iterator.

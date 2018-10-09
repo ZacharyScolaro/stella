@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -79,7 +79,7 @@ void GenesisWidget::loadConfig()
   myPins[kJBbtn]->setState(!myController.read(ourPinNo[kJBbtn]));
 
   myPins[kJCbtn]->setState(
-    myController.read(Controller::Five) == Controller::maximumResistance);
+    myController.read(Controller::Five) == Controller::MAX_RESISTANCE);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -99,8 +99,8 @@ void GenesisWidget::handleCommand(
         break;
       case kJCbtn:
         myController.set(Controller::Five,
-          myPins[id]->getState() ? Controller::maximumResistance :
-                                   Controller::minimumResistance);
+          myPins[id]->getState() ? Controller::MAX_RESISTANCE :
+                                   Controller::MIN_RESISTANCE);
         break;
     }
   }

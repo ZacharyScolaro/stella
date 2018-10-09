@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -35,7 +35,7 @@ CartridgeCVPlusWidget::CartridgeCVPlusWidget(
        << "1024 bytes RAM @ $F000 - $F7FF\n"
        << "  $F000 - $F3FF (R), $F400 - $F7FF (W)\n"
        << "2048 bytes ROM @ $F800 - $FFFF, by writing to $3D\n"
-       << "Startup bank = " << cart.myStartBank << "\n";
+       << "Startup bank = " << cart.startBank() << "\n";
 
   int xpos = 10,
       ypos = addBaseInformation(size, "LS_Dracon / Stephen Anthony",
@@ -58,7 +58,7 @@ CartridgeCVPlusWidget::CartridgeCVPlusWidget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeCVPlusWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.myCurrentBank);
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   CartDebugWidget::loadConfig();
 }
@@ -90,8 +90,11 @@ string CartridgeCVPlusWidget::bankState()
 void CartridgeCVPlusWidget::saveOldState()
 {
   myOldState.internalram.clear();
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
+
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

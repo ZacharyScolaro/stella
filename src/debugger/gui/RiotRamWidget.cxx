@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -56,7 +56,7 @@ void RiotRamWidget::fillList(uInt32 start, uInt32 size, IntArray& alist,
   const CartState& state    = static_cast<const CartState&>(myDbg.getState());
   const CartState& oldstate = static_cast<const CartState&>(myDbg.getOldState());
 
-  for(uInt32 i = 0; i < size; i++)
+  for(uInt32 i = 0; i < size; ++i)
   {
     alist.push_back(i+start);
     vlist.push_back(state.ram[i]);

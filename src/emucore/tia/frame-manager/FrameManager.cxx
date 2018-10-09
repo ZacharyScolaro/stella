@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -35,10 +35,21 @@ enum Metrics: uInt32 {
 };
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-FrameManager::FrameManager() :
-  myHeight(0),
-  myYStart(0)
+FrameManager::FrameManager()
+  : myState(State::waitForVsyncStart),
+    myLineInState(0),
+    myVsyncLines(0),
+    myY(0), myLastY(0),
+    myVblankLines(0),
+    myKernelLines(0),
+    myOverscanLines(0),
+    myFrameLines(0),
+    myHeight(0),
+    myFixedHeight(0),
+    myYStart(0),
+    myJitterEnabled(false)
 {
+  reset();
   onLayoutChange();
 }
 
@@ -51,9 +62,6 @@ void FrameManager::onReset()
   myVsyncLines = 0;
   myY = 0;
 
-  myStableFrameLines = -1;
-  myStableFrameHeightCountdown = 0;
-
   myJitterEmulation.reset();
 }
 
@@ -63,13 +71,13 @@ void FrameManager::onNextLine()
   Int32 jitter;
 
   State previousState = myState;
-  myLineInState++;
+  ++myLineInState;
 
   switch (myState)
   {
     case State::waitForVsyncStart:
       if ((myCurrentFrameTotalLines > myFrameLines - 3) || myTotalFrames == 0)
-        myVsyncLines++;
+        ++myVsyncLines;
 
       if (myVsyncLines > Metrics::maxLinesVsync) setState(State::waitForFrameStart);
 
@@ -100,7 +108,7 @@ void FrameManager::onNextLine()
       throw runtime_error("frame manager: invalid state");
   }
 
-  if (myState == State::frame && previousState == State::frame) myY++;
+  if (myState == State::frame && previousState == State::frame) ++myY;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -218,9 +226,6 @@ bool FrameManager::onSave(Serializer& out) const
 
   out.putBool(myJitterEnabled);
 
-  out.putInt(myStableFrameLines);
-  out.putInt(myStableFrameHeightCountdown);
-
   return true;
 }
 
@@ -244,9 +249,6 @@ bool FrameManager::onLoad(Serializer& in)
   myYStart = in.getInt();
 
   myJitterEnabled = in.getBool();
-
-  myStableFrameLines = in.getInt();
-  myStableFrameHeightCountdown = in.getInt();
 
   return true;
 }

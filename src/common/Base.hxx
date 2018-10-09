@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -47,6 +47,8 @@ class Base
       F_16_4,    // base 16: 4 bytes wide
       F_16_8,    // base 16: 8 bytes wide
       F_10,      // base 10: 3 or 5 bytes (depending on value)
+      F_10_02,   // base 10: 02 digits
+      F_10_4,    // base 10: 4 digits
       F_2,       // base 2:  8 or 16 bits (depending on value)
       F_2_8,     // base 2:  1 byte (8 bits) wide
       F_2_16,    // base 2:  2 bytes (16 bits) wide
@@ -59,7 +61,10 @@ class Base
     static Base::Format format()             { return myDefaultBase; }
 
     /** Get/set HEX output to be upper/lower case */
-    static void setHexUppercase(bool enable);
+    static void setHexUppercase(bool enable) {
+      if(enable) myHexflags |= std::ios_base::uppercase;
+      else       myHexflags &= ~std::ios_base::uppercase;
+    }
     static bool hexUppercase() { return myHexflags & std::ios_base::uppercase; }
 
     /** Output HEX digits in 0.5/1/2/4 byte format */
@@ -95,13 +100,6 @@ class Base
 
     // Upper or lower case for HEX digits
     static std::ios_base::fmtflags myHexflags;
-
-    // Format specifiers to use for sprintf (eventually we may convert
-    // to C++ streams
-    static ostringstream buf;
-    static const char* const myLowerFmt[4];
-    static const char* const myUpperFmt[4];
-    static const char* const* myFmt;
 
   private:
     // Following constructors and assignment operators not supported

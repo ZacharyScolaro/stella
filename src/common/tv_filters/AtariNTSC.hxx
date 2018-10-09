@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -184,6 +184,12 @@ class AtariNTSC
       float artifacts;
       float fringing;
       float kernel [rescale_out * kernel_size * 2];
+
+      init_t() : contrast(0.0), brightness(0.0), artifacts(0.0), fringing(0.0) {
+        std::fill(to_rgb, to_rgb + burst_count * 6, 0.0);
+        std::fill(to_float, to_float + gamma_size, 0.0);
+        std::fill(kernel, kernel + rescale_out * kernel_size * 2, 0.0);
+      }
     };
     init_t myImpl;
 

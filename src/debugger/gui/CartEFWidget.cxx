@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,7 +30,7 @@ CartridgeEFWidget::CartridgeEFWidget(
 
   ostringstream info;
   info << "64K H. Runner EF cartridge, 16 4K banks\n"
-       << "Startup bank = " << cart.myStartBank << "\n";
+       << "Startup bank = " << cart.startBank() << "\n";
 
   // Eventually, we should query this from the debugger/disassembler
   for(uInt32 i = 0, offset = 0xFFC, spot = 0xFE0; i < 16; ++i, offset += 0x1000)
@@ -73,7 +73,12 @@ CartridgeEFWidget::CartridgeEFWidget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeEFWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  Debugger& dbg = instance().debugger();
+  CartDebug& cart = dbg.cartDebug();
+  const CartState& state = static_cast<const CartState&>(cart.getState());
+  const CartState& oldstate = static_cast<const CartState&>(cart.getOldState());
+
+  myBank->setSelectedIndex(myCart.getBank(), state.bank != oldstate.bank);
 
   CartDebugWidget::loadConfig();
 }

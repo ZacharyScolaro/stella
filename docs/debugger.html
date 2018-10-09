@@ -6,7 +6,7 @@
 <body>
 
   <center><b><font size="7">Stella</font></b></center>
-  <center><h4><b>Release 5.1</b></h4></center>
+  <center><h4><b>Release 6.0</b></h4></center>
   <center><h1><b>Integrated Debugger</b></h1></center>
   <center><h4><b>(a work in progress)</b></h4></center>
   <br>
@@ -348,27 +348,27 @@ size can be configured e.g. in the
     <td>Frame+1</td>
   </tr>
   <tr>
-    <td>Control-r</td>
+    <td>Alt-Left arrow</td>
     <td>Rewind 1</td>
   </tr>
   <tr>
-    <td>Control-Shift-r</td>
+    <td>Shift-Alt-Left arrow</td>
     <td>Rewind 10</td>
   </tr>
   <tr>
-    <td>Control-Alt-r</td>
+    <td>Alt-Down arrow</td>
     <td>Rewind all</td>
   </tr>
   <tr>
-    <td>Control-y</td>
+    <td>Alt-Right arrow</td>
     <td>Unwind 1</td>
   </tr>
   <tr>
-    <td>Control-Shift-y</td>
+    <td>Shift-Alt-Right arrow</td>
     <td>Unwind 10</td>
   </tr>
   <tr>
-    <td>Control-Alt-y</td>
+    <td>Alt-Up arrow</td>
     <td>Unwind all</td>
   </tr>
   <tr>
@@ -377,6 +377,7 @@ size can be configured e.g. in the
   </tr>
 </table>
 </p>
+For MacOS use 'Cmd' instead of &nbsp;'Alt' key.
 <p>To the left of the global buttons, you find the "Options..." button.</p>
 <ul>
   <p><img src="graphics/debugger_options.png"></p>
@@ -388,8 +389,8 @@ in detail in the <a href="index.html">User's Guide</a>.</p>
 <br>
 <h2><a name="ChangeTracking"></a>Change Tracking</h2>
 
-<p>The debugger tracks changes to the CPU registers and RAM by displaying
-changed locations or registers with a red background after each step,
+<p>The debugger tracks changes to the CPU, TIA and RIOT registers and RAM by
+displaying changed locations or registers with a red background after each step,
 trace, scanline, or frame advance. This sounds simple, and it is, but
 it's also amazingly useful.</p>
 
@@ -1088,11 +1089,8 @@ as illustrated:</p>
 <p><img src="graphics/debugger_tiaoutcmenu.png"></p>
 <p>The options are as follows:</p>
 <ul>
-	<li><b>Fill to scanline</b>: If you've already started a partial frame
-	draw (ie, the frame is already partially 'greyed' out), selecting this
-	option will draw all scanlines up to the vertical position where the
-	mouse was clicked. Note that if you weren't in partial-frame mode,
-	this option will have no effect.</li>
+	<li><b>Fill to scanline</b>: This option will draw all scanlines up to the
+  vertical position where the	mouse was clicked.</li>
 	<li><b>Toggle breakpoint</b>: Will toggle a conditional breakpoint at the
 	scanline where the mouse was clicked. You can also use
 	the Prompt Tab commands to list and turn off the breakpoint.</li>

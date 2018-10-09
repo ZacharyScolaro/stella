@@ -8,22 +8,24 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include "Dialog.hxx"
-#include "FrameBuffer.hxx"
-#include "RewindDialog.hxx"
-#include "Rewinder.hxx"
+#ifndef CONSOLE_TIMING_HXX
+#define CONSOLE_TIMING_HXX
 
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Rewinder::Rewinder(OSystem& osystem)
-  : DialogContainer(osystem)
+/**
+  Contains timing information about the specified console.
+*/
+enum class ConsoleTiming
 {
-  myBaseDialog = new RewindDialog(myOSystem, *this,
-      FrameBuffer::kFBMinW, FrameBuffer::kFBMinH);
-}
+  ntsc,  // console with CPU running at 1.193182 MHz, NTSC colours
+  pal,   // console with CPU running at 1.182298 MHz, PAL colours
+  secam  // console with CPU running at 1.187500 MHz, SECAM colours
+};
+
+#endif // CONSOLE_TIMING_HXX

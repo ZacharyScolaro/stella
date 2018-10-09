@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -34,7 +34,7 @@ CartridgeFAWidget::CartridgeFAWidget(
   info << "CBS RAM+ FA cartridge, three 4K banks\n"
        << "256 bytes RAM @ $F000 - $F1FF\n"
        << "  $F100 - $F1FF (R), $F000 - $F0FF (W)\n"
-       << "Startup bank = " << cart.myStartBank << " or undetermined\n";
+       << "Startup bank = " << cart.startBank() << " or undetermined\n";
 
   // Eventually, we should query this from the debugger/disassembler
   for(uInt32 i = 0, offset = 0xFFC, spot = 0xFF8; i < 3; ++i, offset += 0x1000)
@@ -65,16 +65,16 @@ void CartridgeFAWidget::saveOldState()
 {
   myOldState.internalram.clear();
 
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
-  {
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
-  }
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeFAWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   CartDebugWidget::loadConfig();
 }

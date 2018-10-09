@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -41,7 +41,21 @@ void EditTextWidget::setText(const string& str, bool changed)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EditTextWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void EditTextWidget::handleMouseEntered()
+{
+  setFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EditTextWidget::handleMouseLeft()
+{
+  clearFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EditTextWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   if(!isEditable())
     return;
@@ -66,31 +80,23 @@ void EditTextWidget::handleMouseDown(int x, int y, int button, int clickCount)
 void EditTextWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
 
   // Highlight changes
-  if(_changed)
+  if(_changed && onTop)
     s.fillRect(_x, _y, _w, _h, kDbgChangedColor);
-  else if(!isEditable())
-#ifndef FLAT_UI
-    s.fillRect(_x, _y, _w, _h, kBGColorHi);
-#else
-    s.fillRect(_x, _y, _w, _h, kDlgColor);
-#endif
+  else if(!isEditable() || !isEnabled())
+    s.fillRect(_x, _y, _w, _h, onTop ? kDlgColor : kBGColorLo);
 
   // Draw a thin frame around us.
-#ifndef FLAT_UI
-  s.hLine(_x, _y, _x + _w - 1, kColor);
-  s.hLine(_x, _y + _h - 1, _x +_w - 1, kShadowColor);
-  s.vLine(_x, _y, _y + _h - 1, kColor);
-  s.vLine(_x + _w - 1, _y, _y + _h - 1, kShadowColor);
-#else
-  s.frameRect(_x, _y, _w, _h, kColor);
-#endif
+  s.frameRect(_x, _y, _w, _h, hilite && isEditable() && isEnabled() ? kWidColorHi : kColor);
 
   // Draw the text
   adjustOffset();
   s.drawString(_font, editString(), _x + 2, _y + 2, getEditRect().width(),
-               !_changed ? _textcolor : uInt32(kDbgChangedTextColor),
+               _changed && onTop && isEnabled()
+               ? kDbgChangedTextColor
+               : onTop && isEnabled() ? _textcolor : kColor,
                TextAlign::Left, -_editScrollOffset, false);
 
   // Draw the caret

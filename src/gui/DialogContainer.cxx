@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -48,28 +48,28 @@ DialogContainer::~DialogContainer()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DialogContainer::updateTime(uInt64 time)
 {
-  // We only need millisecond precision
-  myTime = time / 1000;
-
   if(myDialogStack.empty())
     return;
+
+  // We only need millisecond precision
+  myTime = time / 1000;
 
   // Check for pending continuous events and send them to the active dialog box
   Dialog* activeDialog = myDialogStack.top();
 
   // Key still pressed
-  if(myCurrentKeyDown.keycode != 0 && myKeyRepeatTime < myTime)
+  if(myCurrentKeyDown.key != KBDK_UNKNOWN && myKeyRepeatTime < myTime)
   {
-    activeDialog->handleKeyDown(myCurrentKeyDown.keycode, myCurrentKeyDown.flags);
+    activeDialog->handleKeyDown(myCurrentKeyDown.key, myCurrentKeyDown.mod);
     myKeyRepeatTime = myTime + kRepeatSustainDelay;
   }
 
   // Mouse button still pressed
-  if(myCurrentMouseDown.button != -1 && myClickRepeatTime < myTime)
+  if(myCurrentMouseDown.b != MouseButton::NONE && myClickRepeatTime < myTime)
   {
     activeDialog->handleMouseDown(myCurrentMouseDown.x - activeDialog->_x,
                                   myCurrentMouseDown.y - activeDialog->_y,
-                                  myCurrentMouseDown.button, 1);
+                                  myCurrentMouseDown.b, 1);
     myClickRepeatTime = myTime + kRepeatSustainDelay;
   }
 
@@ -98,37 +98,56 @@ void DialogContainer::updateTime(uInt64 time)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DialogContainer::draw(bool full)
+bool DialogContainer::draw(bool full)
 {
-  // Draw all the dialogs on the stack when we want a full refresh
+  if(myDialogStack.empty())
+    return false;
+
+  // Make the top dialog dirty if a full redraw is requested
   if(full)
-  {
-    myDialogStack.applyAll([](Dialog*& d){
-      d->center();
+    myDialogStack.top()->setDirty();
+
+  // If the top dialog is dirty, then all below it must be redrawn too
+  bool dirty = needsRedraw();
+
+  myDialogStack.applyAll([&](Dialog*& d){
+    if(dirty)
       d->setDirty();
-      d->drawDialog();
-    });
-  }
-  else if(!myDialogStack.empty())
-    myDialogStack.top()->drawDialog();
+    full |= d->render();
+  });
+
+  return full;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool DialogContainer::needsRedraw() const
+{
+  return !myDialogStack.empty() ? myDialogStack.top()->isDirty() : false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DialogContainer::addDialog(Dialog* d)
 {
-  GUI::Rect r = myOSystem.frameBuffer().imageRect();
+  const GUI::Rect& r = myOSystem.frameBuffer().imageRect();
   if(uInt32(d->getWidth()) > r.width() || uInt32(d->getHeight()) > r.height())
     myOSystem.frameBuffer().showMessage(
-        "Unable to show dialog box; resize current window");
+        "Unable to show dialog box; FIX THE CODE");
   else
+  {
+    d->setDirty();
     myDialogStack.push(d);
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DialogContainer::removeDialog()
 {
   if(!myDialogStack.empty())
+  {
     myDialogStack.pop();
+    if(!myDialogStack.empty())
+      myDialogStack.top()->setDirty();
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -136,9 +155,9 @@ void DialogContainer::reStack()
 {
   // Pop all items from the stack, and then add the base menu
   while(!myDialogStack.empty())
-    myDialogStack.top()->close(false);  // don't force a refresh
+    myDialogStack.top()->close();
 
-  myBaseDialog->open(false);  // don't force a refresh
+  myBaseDialog->open();
 
   // Reset all continuous events
   reset();
@@ -165,8 +184,8 @@ void DialogContainer::handleKeyEvent(StellaKey key, StellaMod mod, bool state)
   Dialog* activeDialog = myDialogStack.top();
   if(state)
   {
-    myCurrentKeyDown.keycode = key;
-    myCurrentKeyDown.flags   = mod;
+    myCurrentKeyDown.key = key;
+    myCurrentKeyDown.mod = mod;
     myKeyRepeatTime = myTime + kRepeatInitialDelay;
 
     activeDialog->handleKeyDown(key, mod);
@@ -176,13 +195,13 @@ void DialogContainer::handleKeyEvent(StellaKey key, StellaMod mod, bool state)
     activeDialog->handleKeyUp(key, mod);
 
     // Only stop firing events if it's the current key
-    if (key == myCurrentKeyDown.keycode)
-      myCurrentKeyDown.keycode = KBDK_UNKNOWN;
+    if(key == myCurrentKeyDown.key)
+      myCurrentKeyDown.key = KBDK_UNKNOWN;
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DialogContainer::handleMouseMotionEvent(int x, int y, int button)
+void DialogContainer::handleMouseMotionEvent(int x, int y)
 {
   if(myDialogStack.empty())
     return;
@@ -190,13 +209,12 @@ void DialogContainer::handleMouseMotionEvent(int x, int y, int button)
   // Send the event to the dialog box on the top of the stack
   Dialog* activeDialog = myDialogStack.top();
   activeDialog->surface().translateCoords(x, y);
-  activeDialog->handleMouseMoved(x - activeDialog->_x,
-                                 y - activeDialog->_y,
-                                 button);
+  activeDialog->handleMouseMoved(x - activeDialog->_x, y - activeDialog->_y);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DialogContainer::handleMouseButtonEvent(MouseButton b, int x, int y)
+void DialogContainer::handleMouseButtonEvent(MouseButton b, bool pressed,
+                                             int x, int y)
 {
   if(myDialogStack.empty())
     return;
@@ -205,57 +223,57 @@ void DialogContainer::handleMouseButtonEvent(MouseButton b, int x, int y)
   Dialog* activeDialog = myDialogStack.top();
   activeDialog->surface().translateCoords(x, y);
 
-  int button = (b == MouseButton::LBUTTONDOWN || b == MouseButton::LBUTTONUP) ? 1 : 2;
   switch(b)
   {
-    case MouseButton::LBUTTONDOWN:
-    case MouseButton::RBUTTONDOWN:
-      // If more than two clicks have been recorded, we start over
-      if(myLastClick.count == 2)
+    case MouseButton::LEFT:
+    case MouseButton::RIGHT:
+      if(pressed)
       {
-        myLastClick.x = myLastClick.y = 0;
-        myLastClick.time = 0;
-        myLastClick.count = 0;
-      }
+        // If more than two clicks have been recorded, we start over
+        if(myLastClick.count == 2)
+        {
+          myLastClick.x = myLastClick.y = 0;
+          myLastClick.time = 0;
+          myLastClick.count = 0;
+        }
 
-      if(myLastClick.count && (myTime < myLastClick.time + kDoubleClickDelay)
-         && std::abs(myLastClick.x - x) < 3
-         && std::abs(myLastClick.y - y) < 3)
-      {
-        myLastClick.count++;
+        if(myLastClick.count && (myTime < myLastClick.time + kDoubleClickDelay)
+           && std::abs(myLastClick.x - x) < 3
+           && std::abs(myLastClick.y - y) < 3)
+        {
+          myLastClick.count++;
+        }
+        else
+        {
+          myLastClick.x = x;
+          myLastClick.y = y;
+          myLastClick.count = 1;
+        }
+        myLastClick.time = myTime;
+
+        // Now account for repeated mouse events (click and hold), but only
+        // if the dialog wants them
+        if(activeDialog->handleMouseClicks(x - activeDialog->_x, y - activeDialog->_y, b))
+        {
+          myCurrentMouseDown.x = x;
+          myCurrentMouseDown.y = y;
+          myCurrentMouseDown.b = b;
+          myClickRepeatTime = myTime + kRepeatInitialDelay;
+        }
+        else
+          myCurrentMouseDown.b = MouseButton::NONE;
+
+        activeDialog->handleMouseDown(x - activeDialog->_x, y - activeDialog->_y,
+                                      b, myLastClick.count);
       }
       else
       {
-        myLastClick.x = x;
-        myLastClick.y = y;
-        myLastClick.count = 1;
+        activeDialog->handleMouseUp(x - activeDialog->_x, y - activeDialog->_y,
+                                    b, myLastClick.count);
+
+        if(b == myCurrentMouseDown.b)
+          myCurrentMouseDown.b = MouseButton::NONE;
       }
-      myLastClick.time = myTime;
-
-      // Now account for repeated mouse events (click and hold), but only
-      // if the dialog wants them
-      if(activeDialog->handleMouseClicks(x - activeDialog->_x, y - activeDialog->_y,
-                                         button))
-      {
-        myCurrentMouseDown.x = x;
-        myCurrentMouseDown.y = y;
-        myCurrentMouseDown.button = button;
-        myClickRepeatTime = myTime + kRepeatInitialDelay;
-      }
-      else
-        myCurrentMouseDown.button = -1;
-
-      activeDialog->handleMouseDown(x - activeDialog->_x, y - activeDialog->_y,
-                                    button, myLastClick.count);
-      break;
-
-    case MouseButton::LBUTTONUP:
-    case MouseButton::RBUTTONUP:
-      activeDialog->handleMouseUp(x - activeDialog->_x, y - activeDialog->_y,
-                                  button, myLastClick.count);
-
-      if(button == myCurrentMouseDown.button)
-        myCurrentMouseDown.button = -1;
       break;
 
     case MouseButton::WHEELUP:
@@ -265,11 +283,14 @@ void DialogContainer::handleMouseButtonEvent(MouseButton b, int x, int y)
     case MouseButton::WHEELDOWN:
       activeDialog->handleMouseWheel(x - activeDialog->_x, y - activeDialog->_y, 1);
       break;
+
+    case MouseButton::NONE:  // should never get here
+      break;
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DialogContainer::handleJoyEvent(int stick, int button, uInt8 state)
+void DialogContainer::handleJoyBtnEvent(int stick, int button, uInt8 state)
 {
   if(myDialogStack.empty())
     return;
@@ -342,8 +363,9 @@ void DialogContainer::handleJoyHatEvent(int stick, int hat, JoyHat value)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void DialogContainer::reset()
 {
-  myCurrentKeyDown.keycode = KBDK_UNKNOWN;
-  myCurrentMouseDown.button = -1;
+  myCurrentKeyDown.key = KBDK_UNKNOWN;
+  myCurrentKeyDown.mod = KBDM_NONE;
+  myCurrentMouseDown.b = MouseButton::NONE;
   myLastClick.x = myLastClick.y = 0;
   myLastClick.time = 0;
   myLastClick.count = 0;

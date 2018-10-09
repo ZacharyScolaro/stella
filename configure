@@ -348,22 +348,26 @@ esac
 # Determine the C++ compiler
 #
 echo_n "Looking for C++ compiler... "
-if test -n "$_host"; then
-	compilers="$CXX $_host_prefix-g++ $_host_prefix-c++ $_host_cpu-$_host_os-g++ $_host_cpu-$_host_os-c++"
+if test -n "$CXX"; then
+	echo $CXX
 else
-	compilers="$CXX g++ c++"
-fi
-
-for compiler in $compilers; do
-	if test_compiler "$compiler -std=c++14"; then
-		CXX=$compiler
-		echo $CXX
-		break
+	if test -n "$_host"; then
+		compilers="$_host_prefix-g++ $_host_prefix-c++ $_host_cpu-$_host_os-g++ $_host_cpu-$_host_os-c++"
+	else
+		compilers="g++ c++"
 	fi
-done
-if test -z $CXX; then
-	echo "none found!"
-	exit 1
+
+	for compiler in $compilers; do
+		if test_compiler "$compiler -std=c++14"; then
+			CXX=$compiler
+			echo $CXX
+			break
+		fi
+	done
+	if test -z "$CXX"; then
+		echo "none found!"
+		exit 1
+	fi
 fi
 
 #
@@ -574,7 +578,7 @@ if test "$_libpng" = auto ; then
 #include <png.h>
 int main(void) { return printf("%s\n", PNG_HEADER_VERSION_STRING); }
 EOF
-	cc_check $LDFLAGS $CXXFLAGS $LIBPNG_CFLAGS $LIBPNG_LIBS -lpng && _libpng=yes
+	cc_check $LDFLAGS $CXXFLAGS $LIBPNG_CFLAGS $LIBPNG_LIBS `pkg-config --libs libpng` && _libpng=yes
 fi
 if test "$_libpng" = yes ; then
   _zlib=auto
@@ -707,17 +711,17 @@ LD=$CXX
 
 case $_host_os in
 		unix)
-			DEFINES="$DEFINES -DBSPF_UNIX -DHAVE_GETTIMEOFDAY"
+			DEFINES="$DEFINES -DBSPF_UNIX"
 			MODULES="$MODULES $SRC/unix"
 			INCLUDES="$INCLUDES -I$SRC/unix"
 			;;
 		darwin)
-			DEFINES="$DEFINES -DBSPF_UNIX -DHAVE_GETTIMEOFDAY -DOSX_KEYS"
+			DEFINES="$DEFINES -DBSPF_UNIX -DOSX_KEYS"
 			MODULES="$MODULES $SRC/unix"
 			INCLUDES="$INCLUDES -I$SRC/unix"
 			;;
 		win32)
-			DEFINES="$DEFINES -DBSPF_WINDOWS -DHAVE_GETTIMEOFDAY"
+			DEFINES="$DEFINES -DBSPF_WINDOWS"
 			MODULES="$MODULES $SRC/windows"
 			INCLUDES="$INCLUDES -I$SRC/windows"
 			LIBS="$LIBS -lmingw32 -lwinmm"

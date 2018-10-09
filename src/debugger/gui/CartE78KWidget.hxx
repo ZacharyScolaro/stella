@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,8 +30,8 @@ class CartridgeE78KWidget : public CartridgeMNetworkWidget
     virtual ~CartridgeE78KWidget() = default;
 
   protected:
-    const char* getSpotLower(int idx);
-    const char* getSpotUpper(int idx);
+    const char* getSpotLower(int idx) override;
+    const char* getSpotUpper(int idx) override;
 
   private:
     // Following constructors and assignment operators not supported

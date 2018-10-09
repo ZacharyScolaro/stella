@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -23,19 +23,7 @@
 #include "DialogContainer.hxx"
 #include "PopUpWidget.hxx"
 
-// Little up/down arrow
-#ifndef FLAT_UI
-static uInt32 up_down_arrows[8] = {
-  0b00000000,
-  0b00001000,
-  0b00011100,
-  0b00111110,
-  0b00000000,
-  0b00111110,
-  0b00011100,
-  0b00001000,
-};
-#else
+// Little down arrow
 static uInt32 down_arrow[8] = {
   0b100000001,
   0b110000011,
@@ -46,7 +34,6 @@ static uInt32 down_arrow[8] = {
   0b000010000,
   0b000000000
 };
-#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 PopUpWidget::PopUpWidget(GuiObject* boss, const GUI::Font& font,
@@ -55,7 +42,8 @@ PopUpWidget::PopUpWidget(GuiObject* boss, const GUI::Font& font,
   : Widget(boss, font, x, y - 1, w, h + 2),
     CommandSender(boss),
     _label(label),
-    _labelWidth(labelWidth)
+    _labelWidth(labelWidth),
+    _changed(false)
 {
   _flags = WIDGET_ENABLED | WIDGET_RETAIN_FOCUS;
   _bgcolor = kDlgColor;
@@ -66,11 +54,7 @@ PopUpWidget::PopUpWidget(GuiObject* boss, const GUI::Font& font,
   if(!_label.empty() && _labelWidth == 0)
     _labelWidth = _font.getStringWidth(_label);
 
-#ifndef FLAT_UI
-  _w = w + _labelWidth + 15;
-#else
   _w = w + _labelWidth + 23;
-#endif
 
   // vertically center the arrows and text
   myTextY   = (_h - _font.getFontHeight()) / 2;
@@ -92,14 +76,16 @@ void PopUpWidget::setSelected(const Variant& tag, const Variant& def)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PopUpWidget::setSelectedIndex(int idx)
+void PopUpWidget::setSelectedIndex(int idx, bool changed)
 {
+  _changed = changed;
   myMenu->setSelectedIndex(idx);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PopUpWidget::setSelectedMax()
+void PopUpWidget::setSelectedMax(bool changed)
 {
+  _changed = changed;
   myMenu->setSelectedMax();
 }
 
@@ -128,7 +114,7 @@ const Variant& PopUpWidget::getSelectedTag() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PopUpWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void PopUpWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   if(isEnabled() && !myMenu->isVisible())
   {
@@ -154,21 +140,19 @@ void PopUpWidget::handleMouseWheel(int x, int y, int direction)
   }
 }
 
-#ifdef FLAT_UI
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PopUpWidget::handleMouseEntered(int button)
+void PopUpWidget::handleMouseEntered()
 {
   setFlags(WIDGET_HILITED);
   setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void PopUpWidget::handleMouseLeft(int button)
+void PopUpWidget::handleMouseLeft()
 {
   clearFlags(WIDGET_HILITED);
   setDirty();
 }
-#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool PopUpWidget::handleEvent(Event::Type e)
@@ -179,7 +163,7 @@ bool PopUpWidget::handleEvent(Event::Type e)
   switch(e)
   {
     case Event::UISelect:
-      handleMouseDown(0, 0, 1, 0);
+      handleMouseDown(0, 0, MouseButton::LEFT, 0);
       return true;
     case Event::UIUp:
     case Event::UILeft:
@@ -214,50 +198,31 @@ void PopUpWidget::drawWidget(bool hilite)
 {
 //cerr << "PopUpWidget::drawWidget\n";
   FBSurface& s = dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
 
   int x = _x + _labelWidth;
   int w = _w - _labelWidth;
 
-#ifndef FLAT_UI
   // Draw the label, if any
   if(_labelWidth > 0)
     s.drawString(_font, _label, _x, _y + myTextY, _labelWidth,
-                 isEnabled() ? _textcolor : uInt32(kColor), TextAlign::Right);
+                 isEnabled() && onTop ? _textcolor : kColor, TextAlign::Left);
 
   // Draw a thin frame around us.
-  s.hLine(x, _y, x + w - 1, kColor);
-  s.hLine(x, _y +_h-1, x + w - 1, kShadowColor);
-  s.vLine(x, _y, _y+_h-1, kColor);
-  s.vLine(x + w - 1, _y, _y +_h - 1, kShadowColor);
+  s.frameRect(x, _y, w, _h, isEnabled() && hilite ? kWidColorHi : kColor);
+  s.frameRect(x + w - 16, _y + 1, 15, _h - 2, isEnabled() && hilite ? kWidColorHi : kBGColorLo);
 
   // Fill the background
-  s.fillRect(x + 1, _y + 1, w - 2, _h - 2, kWidColor);
-  // Draw an arrow pointing down at the right end to signal this is a dropdown/popup
-  s.drawBitmap(up_down_arrows, x + w - 10, _y + myArrowsY,
-               !isEnabled() ? kColor : hilite ? kTextColorHi : kTextColor);
-#else
-  // Draw the label, if any
-  if(_labelWidth > 0)
-    s.drawString(_font, _label, _x, _y + myTextY, _labelWidth,
-                 isEnabled() ? _textcolor : uInt32(kColor), TextAlign::Left);
-
-  // Draw a thin frame around us.
-  s.frameRect(x, _y, w, _h, kColor);
-  s.frameRect(x + w - 16, _y + 1, 15, _h - 2, hilite ? kTextColorHi : kBGColorLo);
-
-  // Fill the background
-  s.fillRect(x + 1, _y + 1, w - 17, _h - 2, kWidColor);
-  s.fillRect(x + w - 15, _y + 2, 13, _h - 4, kBGColorHi);
-  //s.vLine(x + w - 17, _y, _y + _h - 1, kShadowColor);
+  s.fillRect(x + 1, _y + 1, w - 17, _h - 2, onTop ? _changed ? kDbgChangedColor : kWidColor : kDlgColor);
+  s.fillRect(x + w - 15, _y + 2, 13, _h - 4, onTop ? isEnabled() && hilite ? kWidColor : kBGColorHi : kBGColorLo);
   // Draw an arrow pointing down at the right end to signal this is a dropdown/popup
   s.drawBitmap(down_arrow, x + w - 13, _y + myArrowsY + 1,
-               !isEnabled() ? kColor : kTextColor, 9u, 8u);
-#endif
+               !(isEnabled() && onTop) ? kColor : kTextColor, 9u, 8u);
 
   // Draw the selected entry, if any
   const string& name = myMenu->getSelectedName();
   TextAlign align = (_font.getStringWidth(name) > w-6) ?
                      TextAlign::Right : TextAlign::Left;
   s.drawString(_font, name, x+2, _y+myTextY, w-6,
-               !isEnabled() ? kColor : kTextColor, align);
+               !(isEnabled() && onTop) ? kColor : kTextColor, align);
 }

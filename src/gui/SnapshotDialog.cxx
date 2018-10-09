@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -21,104 +21,77 @@
 #include "FSNode.hxx"
 #include "Font.hxx"
 #include "LauncherDialog.hxx"
-#include "PopUpWidget.hxx"
 #include "Settings.hxx"
 #include "SnapshotDialog.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 SnapshotDialog::SnapshotDialog(OSystem& osystem, DialogContainer& parent,
-                               const GUI::Font& font)
-  : Dialog(osystem, parent),
+                               const GUI::Font& font, int max_w, int max_h)
+  : Dialog(osystem, parent, font, "Snapshot settings"),
     myFont(font)
 {
+  const int VBORDER = 10;
+  const int HBORDER = 10;
+  const int INDENT = 16;
+  const int V_GAP = 4;
   const int lineHeight   = font.getLineHeight(),
             fontWidth    = font.getMaxCharWidth(),
             buttonWidth  = font.getStringWidth("Save path" + ELLIPSIS) + 20,
             buttonHeight = font.getLineHeight() + 4;
-  const int vBorder = 10;
-  int xpos, ypos, lwidth, fwidth;
+  int xpos, ypos, fwidth;
   WidgetArray wid;
   ButtonWidget* b;
 
   // Set real dimensions
-  _w = 53 * fontWidth + 8;
-  _h = 10 * (lineHeight + 4) + 10;
+  _w = std::min(max_w, 64 * fontWidth + HBORDER * 2);
+  _h = 9 * (lineHeight + 4) + VBORDER + _th;
 
-  xpos = vBorder;  ypos = vBorder;
+  xpos = HBORDER;  ypos = VBORDER + _th;
 
   // Snapshot path (save files)
   b = new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
                        "Save path" + ELLIPSIS, kChooseSnapSaveDirCmd);
   wid.push_back(b);
-  xpos += buttonWidth + 10;
-  mySnapSavePath = new EditTextWidget(this, font, xpos, ypos + 2,
-                                  _w - xpos - 10, lineHeight, "");
+  xpos += buttonWidth + 8;
+  mySnapSavePath = new EditTextWidget(this, font, xpos, ypos + 1,
+                                  _w - xpos - HBORDER, lineHeight, "");
   wid.push_back(mySnapSavePath);
 
-  // Snapshot path (load files)
-  xpos = vBorder;  ypos += buttonHeight + 3;
-  b = new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
-                       "Load path" + ELLIPSIS, kChooseSnapLoadDirCmd);
-  wid.push_back(b);
-  xpos += buttonWidth + 10;
-  mySnapLoadPath = new EditTextWidget(this, font, xpos, ypos + 2,
-                                  _w - xpos - 10, lineHeight, "");
-  wid.push_back(mySnapLoadPath);
-
   // Snapshot naming
-  lwidth = font.getStringWidth("Continuous snapshot interval ");
-  fwidth = font.getStringWidth("internal database");
-  VariantList items;
-  VarList::push_back(items, "actual ROM name", "rom");
-  VarList::push_back(items, "internal database", "int");
-  xpos = vBorder+10;  ypos += buttonHeight + 8;
-  mySnapName =
-    new PopUpWidget(this, font, xpos, ypos, fwidth, lineHeight, items,
-                    "Save snapshots according to ", lwidth);
-  wid.push_back(mySnapName);
+  xpos = HBORDER;  ypos += buttonHeight + V_GAP * 4;
 
   // Snapshot interval (continuous mode)
-  items.clear();
-  VarList::push_back(items, "1 second", "1");
-  VarList::push_back(items, "2 seconds", "2");
-  VarList::push_back(items, "3 seconds", "3");
-  VarList::push_back(items, "4 seconds", "4");
-  VarList::push_back(items, "5 seconds", "5");
-  VarList::push_back(items, "6 seconds", "6");
-  VarList::push_back(items, "7 seconds", "7");
-  VarList::push_back(items, "8 seconds", "8");
-  VarList::push_back(items, "9 seconds", "9");
-  VarList::push_back(items, "10 seconds", "10");
-  ypos += buttonHeight;
-  mySnapInterval =
-    new PopUpWidget(this, font, xpos, ypos, fwidth, lineHeight, items,
-                    "Continuous snapshot interval ", lwidth);
+  mySnapInterval = new SliderWidget(this, font, xpos, ypos,
+                                    "Continuous snapshot interval ", 0, kSnapshotInterval,
+                                    font.getStringWidth("10 seconds"));
+  mySnapInterval->setMinValue(1);
+  mySnapInterval->setMaxValue(10);
+  mySnapInterval->setTickmarkInterval(3);
   wid.push_back(mySnapInterval);
 
   // Booleans for saving snapshots
   fwidth = font.getStringWidth("When saving snapshots:");
-  xpos = vBorder;  ypos += buttonHeight + 5;
+  xpos = HBORDER;  ypos += lineHeight + V_GAP * 3;
   new StaticTextWidget(this, font, xpos, ypos, fwidth, lineHeight,
                        "When saving snapshots:", TextAlign::Left);
 
   // Snapshot single or multiple saves
-  xpos += 30;  ypos += lineHeight + 3;
-  mySnapSingle = new CheckboxWidget(this, font, xpos, ypos,
-                                    "Overwrite existing files");
+  xpos += INDENT;  ypos += lineHeight + V_GAP;
+  mySnapName = new CheckboxWidget(this, font, xpos, ypos, "Use actual ROM name");
+  wid.push_back(mySnapName);
+  ypos += lineHeight + V_GAP;
+
+  mySnapSingle = new CheckboxWidget(this, font, xpos, ypos, "Overwrite existing files");
   wid.push_back(mySnapSingle);
 
   // Snapshot in 1x mode (ignore scaling)
-  ypos += mySnapSingle->getHeight() + 4;
+  ypos += lineHeight + V_GAP;
   mySnap1x = new CheckboxWidget(this, font, xpos, ypos,
                                 "Ignore scaling (1x mode)");
   wid.push_back(mySnap1x);
 
   // Add Defaults, OK and Cancel buttons
-  b = new ButtonWidget(this, font, 10, _h - buttonHeight - 10,
-                       font.getStringWidth("Defaults") + 20, buttonHeight,
-                       "Defaults", GuiObject::kDefaultsCmd);
-  wid.push_back(b);
-  addOKCancelBGroup(wid, font);
+  addDefaultsOKCancelBGroup(wid, font);
 
   addToFocusList(wid);
 }
@@ -133,9 +106,8 @@ void SnapshotDialog::loadConfig()
 {
   const Settings& settings = instance().settings();
   mySnapSavePath->setText(settings.getString("snapsavedir"));
-  mySnapLoadPath->setText(settings.getString("snaploaddir"));
-  mySnapName->setSelected(instance().settings().getString("snapname"), "int");
-  mySnapInterval->setSelected(instance().settings().getString("ssinterval"), "2");
+  mySnapInterval->setValue(instance().settings().getInt("ssinterval"));
+  mySnapName->setState(instance().settings().getString("snapname") == "rom");
   mySnapSingle->setState(settings.getBool("sssingle"));
   mySnap1x->setState(settings.getBool("ss1x"));
 }
@@ -144,13 +116,10 @@ void SnapshotDialog::loadConfig()
 void SnapshotDialog::saveConfig()
 {
   instance().settings().setValue("snapsavedir", mySnapSavePath->getText());
-  instance().settings().setValue("snaploaddir", mySnapLoadPath->getText());
-  instance().settings().setValue("snapname",
-    mySnapName->getSelectedTag().toString());
+  instance().settings().setValue("ssinterval", mySnapInterval->getValue());
+  instance().settings().setValue("snapname", mySnapName->getState() ? "rom" : "int");
   instance().settings().setValue("sssingle", mySnapSingle->getState());
   instance().settings().setValue("ss1x", mySnap1x->getState());
-  instance().settings().setValue("ssinterval",
-    mySnapInterval->getSelectedTag().toString());
 
   // Flush changes to disk and inform the OSystem
   instance().saveConfig();
@@ -161,11 +130,10 @@ void SnapshotDialog::saveConfig()
 void SnapshotDialog::setDefaults()
 {
   mySnapSavePath->setText(instance().defaultSaveDir());
-  mySnapLoadPath->setText(instance().defaultLoadDir());
-
+  mySnapInterval->setValue(2);
+  mySnapName->setState(false);
   mySnapSingle->setState(false);
   mySnap1x->setState(false);
-  mySnapInterval->setSelected("2", "2");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -186,25 +154,20 @@ void SnapshotDialog::handleCommand(CommandSender* sender, int cmd,
     case kChooseSnapSaveDirCmd:
       // This dialog is resizable under certain conditions, so we need
       // to re-create it as necessary
-      createBrowser();
-      myBrowser->show("Select snapshot save directory", mySnapSavePath->getText(),
+      createBrowser("Select snapshot save directory");
+      myBrowser->show(mySnapSavePath->getText(),
                       BrowserDialog::Directories, kSnapSaveDirChosenCmd);
-      break;
-
-    case kChooseSnapLoadDirCmd:
-      // This dialog is resizable under certain conditions, so we need
-      // to re-create it as necessary
-      createBrowser();
-      myBrowser->show("Select snapshot load directory", mySnapLoadPath->getText(),
-                      BrowserDialog::Directories, kSnapLoadDirChosenCmd);
       break;
 
     case kSnapSaveDirChosenCmd:
       mySnapSavePath->setText(myBrowser->getResult().getShortPath());
       break;
 
-    case kSnapLoadDirChosenCmd:
-      mySnapLoadPath->setText(myBrowser->getResult().getShortPath());
+    case kSnapshotInterval:
+      if(mySnapInterval->getValue() == 1)
+        mySnapInterval->setValueUnit(" second");
+      else
+        mySnapInterval->setValueUnit(" seconds");
       break;
 
     default:
@@ -214,13 +177,15 @@ void SnapshotDialog::handleCommand(CommandSender* sender, int cmd,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void SnapshotDialog::createBrowser()
+void SnapshotDialog::createBrowser(const string& title)
 {
   uInt32 w = 0, h = 0;
-  getResizableBounds(w, h);
+  getDynamicBounds(w, h);
 
   // Create file browser dialog
   if(!myBrowser || uInt32(myBrowser->getWidth()) != w ||
-                   uInt32(myBrowser->getHeight()) != h)
-    myBrowser = make_unique<BrowserDialog>(this, myFont, w, h);
+     uInt32(myBrowser->getHeight()) != h)
+    myBrowser = make_unique<BrowserDialog>(this, myFont, w, h, title);
+  else
+    myBrowser->setTitle(title);
 }

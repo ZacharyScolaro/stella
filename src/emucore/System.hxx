@@ -8,7 +8,7 @@
 // MM     MM 66  66 55  55 00  00 22
 // MM     MM  6666   5555   0000  222222
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -27,6 +27,7 @@ class NullDevice;
 #include "bspf.hxx"
 #include "Device.hxx"
 #include "NullDev.hxx"
+#include "OSystem.hxx"
 #include "Random.hxx"
 #include "Serializable.hxx"
 
@@ -88,6 +89,13 @@ class System : public Serializable
     void reset(bool autodetect = false);
 
   public:
+    /**
+      Answer the OSystem attached to the system.
+
+      @return The attached OSystem
+    */
+    const OSystem& oSystem() const { return myOSystem; }
+
     /**
       Answer the 6502 microprocessor attached to the system.  If a
       processor has not been attached calling this function will fail.
@@ -368,13 +376,6 @@ class System : public Serializable
       @return  False on any errors, else true
     */
     bool load(Serializer& in) override;
-
-    /**
-      Get a descriptor for the device name (used in error checking).
-
-      @return The name of the object
-    */
-    string name() const override { return "System"; }
 
   private:
     const OSystem& myOSystem;

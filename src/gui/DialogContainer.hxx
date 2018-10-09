@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -46,7 +46,7 @@ class DialogContainer
     /**
       Create a new DialogContainer stack
     */
-    DialogContainer(OSystem& osystem);
+    explicit DialogContainer(OSystem& osystem);
     virtual ~DialogContainer();
 
   public:
@@ -77,20 +77,20 @@ class DialogContainer
     /**
       Handle a mouse motion event.
 
-      @param x      The x location
-      @param y      The y location
-      @param button The currently pressed button
+      @param x  The x location
+      @param y  The y location
     */
-    void handleMouseMotionEvent(int x, int y, int button);
+    void handleMouseMotionEvent(int x, int y);
 
     /**
       Handle a mouse button event.
 
-      @param b     The mouse button
-      @param x     The x location
-      @param y     The y location
+      @param b        The mouse button
+      @param pressed  Whether the button was pressed (true) or released (false)
+      @param x        The x location
+      @param y        The y location
     */
-    void handleMouseButtonEvent(MouseButton b, int x, int y);
+    void handleMouseButtonEvent(MouseButton b, bool pressed, int x, int y);
 
     /**
       Handle a joystick button event.
@@ -99,7 +99,7 @@ class DialogContainer
       @param button  The joystick button
       @param state   The state (pressed or released)
     */
-    void handleJoyEvent(int stick, int button, uInt8 state);
+    void handleJoyBtnEvent(int stick, int button, uInt8 state);
 
     /**
       Handle a joystick axis event.
@@ -121,8 +121,15 @@ class DialogContainer
 
     /**
       Draw the stack of menus (full indicates to redraw all items).
+
+      @return  Answers whether any drawing actually occurred.
     */
-    void draw(bool full = false);
+    bool draw(bool full = false);
+
+    /**
+      Answers whether a full redraw is required.
+    */
+    bool needsRedraw() const;
 
     /**
       Reset dialog stack to the main configuration menu.
@@ -133,6 +140,14 @@ class DialogContainer
       Return the bottom-most dialog of this container.
     */
     const Dialog* baseDialog() const { return myBaseDialog; }
+
+    /**
+      Inform the container that it should resize according to the current
+      screen dimensions.  We make this virtual, since the container may or
+      may not choose to do a resize, and even if it does, *how* it does it
+      is determined by the specific container.
+    */
+    virtual void requestResize() { }
 
   private:
     void reset();
@@ -164,8 +179,8 @@ class DialogContainer
 
     // For continuous 'key down' events
     struct {
-      StellaKey keycode;
-      StellaMod flags;
+      StellaKey key;
+      StellaMod mod;
     } myCurrentKeyDown;
     uInt64 myKeyRepeatTime;
 
@@ -173,7 +188,7 @@ class DialogContainer
     struct {
       int x;
       int y;
-      int button;
+      MouseButton b;
     } myCurrentMouseDown;
     uInt64 myClickRepeatTime;
 

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -42,10 +42,10 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
     myNumRows(numrows),
     myPageSize(pagesize)
 {
-  const string ELLIPSIS = "\x1d";
   const int bwidth  = lfont.getStringWidth("Compare " + ELLIPSIS),
             bheight = myLineHeight + 2;
   const int VGAP = 4;
+  WidgetArray wid;
 
   int ypos = y + myLineHeight;
 
@@ -63,27 +63,34 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
 
   myUndoButton = new ButtonWidget(boss, lfont, bx, by, bwidth, bheight,
                                   "Undo", kUndoCmd);
+  wid.push_back(myUndoButton);
   myUndoButton->setTarget(this);
 
   by += bheight + VGAP;
   myRevertButton = new ButtonWidget(boss, lfont, bx, by, bwidth, bheight,
                                     "Revert", kRevertCmd);
+  wid.push_back(myRevertButton);
   myRevertButton->setTarget(this);
 
   by += bheight + VGAP * 6;
   mySearchButton = new ButtonWidget(boss, lfont, bx, by, bwidth, bheight,
                                     "Search" + ELLIPSIS, kSearchCmd);
+  wid.push_back(mySearchButton);
   mySearchButton->setTarget(this);
 
   by += bheight + VGAP;
   myCompareButton = new ButtonWidget(boss, lfont, bx, by, bwidth, bheight,
                                      "Compare" + ELLIPSIS, kCmpCmd);
+  wid.push_back(myCompareButton);
   myCompareButton->setTarget(this);
 
   by += bheight + VGAP;
   myRestartButton = new ButtonWidget(boss, lfont, bx, by, bwidth, bheight,
                                      "Reset", kRestartCmd);
+  wid.push_back(myRestartButton);
   myRestartButton->setTarget(this);
+
+  addToFocusList(wid);
 
   // Labels for RAM grid
   myRamStart =
@@ -146,8 +153,8 @@ RamWidget::RamWidget(GuiObject* boss, const GUI::Font& lfont, const GUI::Font& n
   myLabel->setEditable(false, true);
 
   // Inputbox which will pop up when searching RAM
-  StringList labels = { "Search " };
-  myInputBox = make_unique<InputTextDialog>(boss, lfont, nfont, labels);
+  StringList labels = { "Value" };
+  myInputBox = make_unique<InputTextDialog>(boss, lfont, nfont, labels, " ");
   myInputBox->setTarget(this);
 
   // Start with these buttons disabled
@@ -247,7 +254,7 @@ void RamWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
     {
       const string& result = doSearch(myInputBox->getResult());
       if(result != "")
-        myInputBox->setTitle(result);
+        myInputBox->setMessage(result);
       else
         myInputBox->close();
       break;
@@ -257,7 +264,7 @@ void RamWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
     {
       const string& result = doCompare(myInputBox->getResult());
       if(result != "")
-        myInputBox->setTitle(result);
+        myInputBox->setMessage(result);
       else
         myInputBox->close();
       break;
@@ -322,11 +329,13 @@ void RamWidget::showInputBox(int cmd)
   // Add inputbox in the middle of the RAM widget
   uInt32 x = getAbsX() + ((getWidth() - myInputBox->getWidth()) >> 1);
   uInt32 y = getAbsY() + ((getHeight() - myInputBox->getHeight()) >> 1);
+
   myInputBox->show(x, y);
   myInputBox->setText("");
-  myInputBox->setTitle("");
+  myInputBox->setMessage("");
   myInputBox->setFocus(0);
   myInputBox->setEmitSignal(cmd);
+  myInputBox->setTitle(cmd == kSValEntered ? "Search" : "Compare");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

@@ -8,14 +8,12 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
-
-#include <climits>
 
 #include "Control.hxx"
 #include "Event.hxx"
@@ -51,8 +49,8 @@ uInt8 PointingDevice::read()
   // Loop over all missed changes
   while(myScanCountH < scanline)
   {
-    if(myTrackBallLeft) myCountH--;
-    else                myCountH++;
+    if(myTrackBallLeft) --myCountH;
+    else                ++myCountH;
 
     // Define scanline of next change
     myScanCountH += myTrackBallLinesH;
@@ -61,8 +59,8 @@ uInt8 PointingDevice::read()
   // Loop over all missed changes
   while(myScanCountV < scanline)
   {
-    if(myTrackBallDown) myCountV++;
-    else                myCountV--;
+    if(myTrackBallDown) ++myCountV;
+    else                --myCountV;
 
     // Define scanline of next change
     myScanCountV += myTrackBallLinesV;
@@ -117,7 +115,7 @@ bool PointingDevice::setMouseControl(
 void PointingDevice::setSensitivity(int sensitivity)
 {
   BSPF::clamp(sensitivity, 1, 20, 10);
-  TB_SENSITIVITY = sensitivity / 10.0;
+  TB_SENSITIVITY = sensitivity / 10.0f;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -149,7 +147,7 @@ void PointingDevice::updateDirection(int counter, float& counterRemainder,
     scanCount = INT_MAX;
 
     // Define offset factor for first change, move randomly forward by up to 1/8th
-    firstScanOffset = (((firstScanOffset << 3) + rand() %
+    firstScanOffset = (((firstScanOffset << 3) + mySystem.randGenerator().next() %
                       (1 << 12)) >> 3) & ((1 << 12) - 1);
   }
 }

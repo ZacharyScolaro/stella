@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,6 +20,7 @@
 #include "DiStella.hxx"
 #include "PackedBitArray.hxx"
 #include "Widget.hxx"
+#include "StellaKeys.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
 #include "ScrollBarWidget.hxx"
@@ -79,11 +80,10 @@ RomListWidget::RomListWidget(GuiObject* boss, const GUI::Font& lfont,
   _rows = h / _fontHeight;
 
   // Create a CheckboxWidget for each row in the list
-  CheckboxWidget* t = nullptr;
   for(int i = 0; i < _rows; ++i)
   {
-    t = new CheckboxWidget(boss, lfont, _x + 2, ypos, "",
-                           CheckboxWidget::kCheckActionCmd);
+    CheckboxWidget* t = new CheckboxWidget(boss, lfont, _x + 2, ypos, "",
+        CheckboxWidget::kCheckActionCmd);
     t->setTarget(this);
     t->setID(i);
     t->setFill(CheckboxWidget::Circle);
@@ -237,13 +237,13 @@ void RomListWidget::scrollToCurrent(int item)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void RomListWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void RomListWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   if (!isEnabled())
     return;
 
   // Grab right mouse button for context menu, left for selection/edit mode
-  if(button == 2)
+  if(b == MouseButton::RIGHT)
   {
     // Set selected and add menu at current x,y mouse location
     _selectedItem = findItem(x, y);
@@ -269,7 +269,7 @@ void RomListWidget::handleMouseDown(int x, int y, int button, int clickCount)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void RomListWidget::handleMouseUp(int x, int y, int button, int clickCount)
+void RomListWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   // If this was a double click and the mouse is still over the selected item,
   // send the double click command
@@ -288,6 +288,20 @@ void RomListWidget::handleMouseWheel(int x, int y, int direction)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void RomListWidget::handleMouseEntered()
+{
+  setFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void RomListWidget::handleMouseLeft()
+{
+  clearFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool RomListWidget::handleText(char text)
 {
   if(_editMode)
@@ -302,7 +316,7 @@ bool RomListWidget::handleText(char text)
 bool RomListWidget::handleKeyDown(StellaKey key, StellaMod mod)
 {
   // Ignore all Alt-mod keys
-  if(instance().eventHandler().kbdAlt(mod))
+  if(StellaModTest::isAlt(mod))
     return true;
 
   bool handled = true;
@@ -450,16 +464,16 @@ void RomListWidget::lostFocusWidget()
 void RomListWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
   const CartDebug::DisassemblyList& dlist = myDisasm->list;
   int i, pos, xpos, ypos, len = int(dlist.size());
+  ColorId textColor = onTop ? kTextColor : kColor;
 
   const GUI::Rect& r = getEditRect();
   const GUI::Rect& l = getLineRect();
 
   // Draw a thin frame around the list and to separate columns
-  s.hLine(_x, _y, _x + _w - 1, kColor);
-  s.hLine(_x, _y + _h - 1, _x + _w - 1, kShadowColor);
-  s.vLine(_x, _y, _y + _h - 1, kColor);
+  s.frameRect(_x, _y, _w + 1, _h, hilite ? kWidColorHi : kColor);
   s.vLine(_x + CheckboxWidget::boxSize() + 5, _y, _y + _h - 1, kColor);
 
   // Draw the list items
@@ -474,7 +488,7 @@ void RomListWidget::drawWidget(bool hilite)
   xpos = _x + CheckboxWidget::boxSize() + 10;  ypos = _y + 2;
   for (i = 0, pos = _currentPos; i < _rows && pos < len; i++, pos++, ypos += _fontHeight)
   {
-    uInt32 bytesColor = kTextColor;
+    ColorId bytesColor = textColor;
 
     // Draw checkboxes for correct lines (takes scrolling into account)
     myCheckList[i]->setState(myBPState->isSet(dlist[pos].address));
@@ -483,7 +497,7 @@ void RomListWidget::drawWidget(bool hilite)
 
     // Draw highlighted item in a frame
     if (_highlightedItem == pos)
-      s.frameRect(_x + l.x() - 3, ypos - 1, _w - l.x(), _fontHeight, kTextColorHi);
+      s.frameRect(_x + l.x() - 3, ypos - 1, _w - l.x(), _fontHeight, onTop ? kWidColorHi : kBGColorLo);
 
     // Draw the selected item inverted, on a highlighted background.
     if(_selectedItem == pos && _hasFocus)
@@ -494,12 +508,12 @@ void RomListWidget::drawWidget(bool hilite)
         bytesColor = kTextColorInv;
       }
       else
-        s.frameRect(_x + r.x() - 3, ypos - 1, r.width(), _fontHeight, kTextColorHi);
+        s.frameRect(_x + r.x() - 3, ypos - 1, r.width(), _fontHeight, kWidColorHi);
     }
 
     // Draw labels
     s.drawString(_font, dlist[pos].label, xpos, ypos, _labelWidth,
-                 dlist[pos].hllabel ? kTextColor : kColor);
+                 dlist[pos].hllabel ? textColor : kColor);
 
     // Bytes are only editable if they represent code, graphics, or accessible data
     // Otherwise, the disassembly should get all remaining space
@@ -509,14 +523,14 @@ void RomListWidget::drawWidget(bool hilite)
       {
         // Draw mnemonic
         s.drawString(_font, dlist[pos].disasm.substr(0, 7), xpos + _labelWidth, ypos,
-                     7 * _fontWidth, kTextColor);
+                     7 * _fontWidth, textColor);
         // Draw operand
         if (dlist[pos].disasm.length() > 8)
           s.drawString(_font, dlist[pos].disasm.substr(8), xpos + _labelWidth + 7 * _fontWidth, ypos,
-                       codeDisasmW - 7 * _fontWidth, kTextColor);
+                       codeDisasmW - 7 * _fontWidth, textColor);
         // Draw cycle count
         s.drawString(_font, dlist[pos].ccount, xpos + _labelWidth + codeDisasmW, ypos,
-                     cycleCountW, kTextColor);
+                     cycleCountW, textColor);
       }
       else
       {
@@ -533,7 +547,7 @@ void RomListWidget::drawWidget(bool hilite)
         if (_selectedItem == pos && _editMode)
         {
           adjustOffset();
-          s.drawString(_font, editString(), _x + r.x(), ypos, r.width(), kTextColor,
+          s.drawString(_font, editString(), _x + r.x(), ypos, r.width(), textColor,
                        TextAlign::Left, -_editScrollOffset, false);
 
           drawCaret();
@@ -548,7 +562,7 @@ void RomListWidget::drawWidget(bool hilite)
     {
       // Draw disassembly, giving it all remaining horizontal space
       s.drawString(_font, dlist[pos].disasm, xpos + _labelWidth, ypos,
-                   noTypeDisasmW, kTextColor);
+                   noTypeDisasmW, textColor);
     }
   }
 }

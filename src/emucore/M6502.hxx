@@ -8,7 +8,7 @@
 // MM     MM 66  66 55  55 00  00 22
 // MM     MM  6666   5555   0000  222222
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -22,6 +22,7 @@
 
 class Settings;
 class System;
+class DispatchResult;
 
 #ifdef DEBUGGER_SUPPORT
   class Debugger;
@@ -61,7 +62,7 @@ class M6502 : public Serializable
     /**
       Create a new 6502 microprocessor.
     */
-    M6502(const Settings& settings);
+    explicit M6502(const Settings& settings);
     virtual ~M6502() = default;
 
   public:
@@ -110,10 +111,14 @@ class M6502 : public Serializable
       is executed, someone stops execution, or an error occurs.  Answers
       true iff execution stops normally.
 
-      @param number Indicates the number of instructions to execute
-      @return true iff execution stops normally
+      @param cycles Indicates the number of cycles to execute. Not that the actual
+                    granularity of the CPU is instructions, so this is only accurate up to
+                    a couple of cycles
+      @param result A DispatchResult object that will transport the result
     */
-    bool execute(uInt32 number);
+    void execute(uInt64 cycles, DispatchResult& result);
+
+    bool execute(uInt64 cycles);
 
     /**
       Tell the processor to stop executing instructions.  Invoking this
@@ -209,13 +214,6 @@ class M6502 : public Serializable
     */
     bool load(Serializer& in) override;
 
-    /**
-      Get a null terminated string which is the processor's name (i.e. "M6532")
-
-      @return The name of the device
-    */
-    string name() const override { return "M6502"; }
-
 #ifdef DEBUGGER_SUPPORT
   public:
     // Attach the specified debugger.
@@ -242,6 +240,8 @@ class M6502 : public Serializable
     bool delCondTrap(uInt32 brk);
     void clearCondTraps();
     const StringList& getCondTrapNames() const;
+
+    void setGhostReadsTrap(bool enable) { myGhostReadsTrap = enable; }
 #endif  // DEBUGGER_SUPPORT
 
   private:
@@ -313,10 +313,18 @@ class M6502 : public Serializable
     void handleHalt();
 
     /**
+      This is the actual dispatch function that does the grunt work. M6502::execute
+      wraps it and makes sure that any pending halt is processed before returning.
+    */
+    void _execute(uInt64 cycles, DispatchResult& result);
+
+#ifdef DEBUGGER_SUPPORT
+    /**
       Check whether we are required to update hardware (TIA + RIOT) in lockstep
       with the CPU and update the flag accordingly.
     */
     void updateStepStateByInstruction();
+#endif  // DEBUGGER_SUPPORT
 
   private:
     /**
@@ -361,6 +369,9 @@ class M6502 : public Serializable
 
     /// Indicates the last address which was accessed
     uInt16 myLastAddress;
+
+    /// Last cycle that triggered a breakpoint
+    uInt64 myLastBreakCycle;
 
     /// Indicates the last address which was accessed specifically
     /// by a peek or poke command
@@ -444,10 +455,12 @@ class M6502 : public Serializable
     StringList myCondSaveStateNames;
     vector<unique_ptr<Expression>> myTrapConds;
     StringList myTrapCondNames;
-
-    bool myStepStateByInstruction;
-
 #endif  // DEBUGGER_SUPPORT
+
+    // These are both used only by the debugger, but since they're included
+    // in save states, they cannot be conditionally compiled
+    bool myGhostReadsTrap;    // trap on ghost reads
+    bool myStepStateByInstruction;
 
   private:
     // Following constructors and assignment operators not supported

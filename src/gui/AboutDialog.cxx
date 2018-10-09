@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -25,7 +25,7 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 AboutDialog::AboutDialog(OSystem& osystem, DialogContainer& parent,
                          const GUI::Font& font)
-  : Dialog(osystem, parent),
+  : Dialog(osystem, parent, font, "About Stella"),
     myPage(1),
     myNumPages(4),
     myLinesPerPage(13)
@@ -40,7 +40,7 @@ AboutDialog::AboutDialog(OSystem& osystem, DialogContainer& parent,
 
   // Set real dimensions
   _w = 55 * fontWidth + 8;
-  _h = 15 * lineHeight + 20;
+  _h = 15 * lineHeight + 20 + _th;
 
   // Add Previous, Next and Close buttons
   xpos = 10;  ypos = _h - buttonHeight - 10;
@@ -50,7 +50,7 @@ AboutDialog::AboutDialog(OSystem& osystem, DialogContainer& parent,
   myPrevButton->clearFlags(WIDGET_ENABLED);
   wid.push_back(myPrevButton);
 
-  xpos += buttonWidth + 7;
+  xpos += buttonWidth + 8;
   myNextButton =
     new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
                      "Next", GuiObject::kNextCmd);
@@ -61,17 +61,17 @@ AboutDialog::AboutDialog(OSystem& osystem, DialogContainer& parent,
     new ButtonWidget(this, font, xpos, ypos, buttonWidth, buttonHeight,
                      "Close", GuiObject::kCloseCmd);
   wid.push_back(b);
-  addOKWidget(b);  addCancelWidget(b);
+  addCancelWidget(b);
 
-  xpos = 5;  ypos = 5;
-  myTitle = new StaticTextWidget(this, font, xpos, ypos, _w - 10, fontHeight,
+  xpos = 5;  ypos = 5 + _th;
+  myTitle = new StaticTextWidget(this, font, xpos, ypos, _w - xpos * 2, fontHeight,
                                  "", TextAlign::Center);
   myTitle->setTextColor(kTextColorEm);
 
-  xpos = 10;  ypos += lineHeight + 4;
+  xpos = 16;  ypos += lineHeight + 4;
   for(int i = 0; i < myLinesPerPage; i++)
   {
-    myDesc.push_back(new StaticTextWidget(this, font, xpos, ypos, _w - 20,
+    myDesc.push_back(new StaticTextWidget(this, font, xpos, ypos, _w - xpos * 2,
                                           fontHeight, "", TextAlign::Left));
     myDescStr.push_back("");
     ypos += fontHeight;
@@ -104,7 +104,7 @@ void AboutDialog::updateStrings(int page, int lines, string& title)
       ADD_ATEXT(string("\\C\\c2Features: ") + instance().features());
       ADD_ATEXT(string("\\C\\c2") + instance().buildInfo());
       ADD_ALINE();
-      ADD_ATEXT("\\CCopyright (C) 1995-2017 The Stella Team");
+      ADD_ATEXT("\\CCopyright (C) 1995-2018 The Stella Team");
       ADD_ATEXT("\\C(https://stella-emu.github.io)");
       ADD_ALINE();
       ADD_ATEXT("\\CStella is now DonationWare!");
@@ -116,30 +116,30 @@ void AboutDialog::updateStrings(int page, int lines, string& title)
 
     case 2:
       title = "The Stella Team";
-      ADD_ATEXT("\\L\\c0""  Stephen Anthony");
-      ADD_ATEXT("\\L\\c2""    Lead developer, current maintainer for the");
-      ADD_ATEXT("\\L\\c2""    Linux/OSX and Windows ports ");
-      ADD_ATEXT("\\L\\c0""  Christian Speckner");
-      ADD_ATEXT("\\L\\c2""    Emulation core development, TIA core");
-      ADD_ATEXT("\\L\\c0""  Eckhard Stolberg");
-      ADD_ATEXT("\\L\\c2""    Emulation core development");
-      ADD_ATEXT("\\L\\c0""  Thomas Jentzsch");
-      ADD_ATEXT("\\L\\c2""    Emulation core development, jack-of-all-trades");
-      ADD_ATEXT("\\L\\c0""  Brian Watson");
-      ADD_ATEXT("\\L\\c2""    Emulation core enhancement, debugger support");
-      ADD_ATEXT("\\L\\c0""  Bradford W. Mott");
-      ADD_ATEXT("\\L\\c2""    Original author of Stella");
+      ADD_ATEXT("\\L\\c0""Stephen Anthony");
+      ADD_ATEXT("\\L\\c2""  Lead developer, current maintainer for the");
+      ADD_ATEXT("\\L\\c2""  Linux/OSX and Windows ports ");
+      ADD_ATEXT("\\L\\c0""Christian Speckner");
+      ADD_ATEXT("\\L\\c2""  Emulation core development, TIA core");
+      ADD_ATEXT("\\L\\c0""Eckhard Stolberg");
+      ADD_ATEXT("\\L\\c2""  Emulation core development");
+      ADD_ATEXT("\\L\\c0""Thomas Jentzsch");
+      ADD_ATEXT("\\L\\c2""  Emulation core development, jack-of-all-trades");
+      ADD_ATEXT("\\L\\c0""Brian Watson");
+      ADD_ATEXT("\\L\\c2""  Emulation core enhancement, debugger support");
+      ADD_ATEXT("\\L\\c0""Bradford W. Mott");
+      ADD_ATEXT("\\L\\c2""  Original author of Stella");
       break;
 
     case 3:
       title = "Contributors";
-      ADD_ATEXT("\\L\\c0""  See https://stella-emu.github.io/credits.html for");
-      ADD_ATEXT("\\L\\c0""  people that have contributed to Stella.");
+      ADD_ATEXT("\\L\\c0""See https://stella-emu.github.io/credits.html for");
+      ADD_ATEXT("\\L\\c0""people that have contributed to Stella.");
       ADD_ALINE();
-      ADD_ATEXT("\\L\\c0""  Thanks to the ScummVM project for the GUI code.");
+      ADD_ATEXT("\\L\\c0""Thanks to the ScummVM project for the GUI code.");
       ADD_ALINE();
-      ADD_ATEXT("\\L\\c0""  Thanks to Ian Bogost and the Georgia Tech");
-      ADD_ATEXT("\\L\\c0""  Atari Team for the CRT Simulation effects.");
+      ADD_ATEXT("\\L\\c0""Thanks to Ian Bogost and the Georgia Tech Atari Team");
+      ADD_ATEXT("\\L\\c0""for the CRT Simulation effects.");
       break;
 
     case 4:
@@ -169,7 +169,7 @@ void AboutDialog::displayInfo()
   {
     const char* str = myDescStr[i].c_str();
     TextAlign align = TextAlign::Center;
-    uInt32 color  = kTextColor;
+    ColorId color  = kTextColor;
 
     while (str[0] == '\\')
     {
@@ -226,7 +226,7 @@ void AboutDialog::displayInfo()
   }
 
   // Redraw entire dialog
-  _dirty = true;
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

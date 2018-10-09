@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,7 +26,6 @@ class GameList;
 class BrowserDialog;
 class OptionsDialog;
 class GlobalPropsDialog;
-class LauncherFilterDialog;
 class OSystem;
 class Properties;
 class EditTextWidget;
@@ -47,10 +46,10 @@ class LauncherDialog : public Dialog
   public:
     // These must be accessible from dialogs created by this class
     enum {
-      kLoadROMCmd       = 'STRT',  // load currently selected ROM
-      kRomDirChosenCmd  = 'romc',  // rom chosen
-      kReloadRomDirCmd  = 'rdrl',  // reload the current listing
-      kReloadFiltersCmd = 'rlfl'   // reload filtering options and current listing
+      kLoadROMCmd      = 'STRT',  // load currently selected ROM
+      kRomDirChosenCmd = 'romc',  // rom dir chosen
+      kReloadRomDirCmd = 'rdrl',  // reload the current listing
+      kOnlyROMsCmd     = 'rdor'   // what to show has changed (ROMs vs. all files)
     };
 
   public:
@@ -79,7 +78,7 @@ class LauncherDialog : public Dialog
 
   private:
     void handleKeyDown(StellaKey key, StellaMod mod) override;
-    void handleMouseDown(int x, int y, int button, int clickCount) override;
+    void handleMouseDown(int x, int y, MouseButton b, int clickCount) override;
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
 
     void loadConfig() override;
@@ -88,7 +87,7 @@ class LauncherDialog : public Dialog
     void loadDirListing();
     void loadRomInfo();
     void handleContextMenu();
-    void setListFilters();
+    void showOnlyROMs(bool state);
     bool matchPattern(const string& s, const string& pattern) const;
 
   private:
@@ -96,9 +95,7 @@ class LauncherDialog : public Dialog
     unique_ptr<GameList> myGameList;
     unique_ptr<ContextMenu> myMenu;
     unique_ptr<GlobalPropsDialog> myGlobalProps;
-    unique_ptr<LauncherFilterDialog> myFilters;
     unique_ptr<BrowserDialog> myRomDir;
-    unique_ptr<GUI::MessageBox> myFirstRunMsg;
 
     ButtonWidget* myStartButton;
     ButtonWidget* myPrevDirButton;
@@ -117,15 +114,12 @@ class LauncherDialog : public Dialog
     FilesystemNode myCurrentNode;
     Common::FixedStack<string> myNodeNames;
 
-    StringList myRomExts;
+    bool myShowOnlyROMs;
 
     enum {
       kPrevDirCmd = 'PRVD',
       kOptionsCmd = 'OPTI',
-      kQuitCmd    = 'QUIT',
-
-      kFirstRunMsgChosenCmd   = 'frmc',
-      kStartupRomDirChosenCmd = 'rmsc'
+      kQuitCmd    = 'QUIT'
     };
 
   private:

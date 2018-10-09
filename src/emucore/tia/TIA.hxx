@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,16 +20,15 @@
 
 #include "bspf.hxx"
 #include "Console.hxx"
-#include "Sound.hxx"
 #include "Settings.hxx"
 #include "Device.hxx"
 #include "Serializer.hxx"
-#include "TIATypes.hxx"
 #include "TIAConstants.hxx"
 #include "DelayQueue.hxx"
 #include "DelayQueueIterator.hxx"
 #include "frame-manager/AbstractFrameManager.hxx"
 #include "FrameLayout.hxx"
+#include "Audio.hxx"
 #include "Background.hxx"
 #include "Playfield.hxx"
 #include "Missile.hxx"
@@ -40,6 +39,9 @@
 #include "DelayQueueIterator.hxx"
 #include "Control.hxx"
 #include "System.hxx"
+
+class AudioQueue;
+class DispatchResult;
 
 /**
   This class is a device that emulates the Television Interface Adaptor
@@ -71,22 +73,31 @@ class TIA : public Device
      * Possible palette entries for objects in "fixed debug color mode".
      */
     enum FixedColor {
-      NTSC_RED    = 0x30,
-      NTSC_ORANGE = 0x38,
-      NTSC_YELLOW = 0x1c,
-      NTSC_GREEN  = 0xc4,
-      NTSC_BLUE   = 0x9e,
-      NTSC_PURPLE = 0x66,
+      NTSC_RED      = 0x30,
+      NTSC_ORANGE   = 0x38,
+      NTSC_YELLOW   = 0x1c,
+      NTSC_GREEN    = 0xc4,
+      NTSC_BLUE     = 0x9c,
+      NTSC_PURPLE   = 0x66,
+      NTSC_GREY     = 0x04,
 
-      PAL_RED     = 0x62,
-      PAL_ORANGE  = 0x4a,
-      PAL_YELLOW  = 0x2e,
-      PAL_GREEN   = 0x34,
-      PAL_BLUE    = 0xbc,
-      PAL_PURPLE  = 0xa6,
+      PAL_RED       = 0x62,
+      PAL_ORANGE    = 0x4a,
+      PAL_YELLOW    = 0x2e,
+      PAL_GREEN     = 0x34,
+      PAL_BLUE      = 0xbc,
+      PAL_PURPLE    = 0xa6,
+      PAL_GREY      = 0x06,
 
-      BK_GREY      = 0x0a,
-      HBLANK_WHITE = 0x0e
+      SECAM_RED     = 0x04,
+      SECAM_ORANGE  = 0x06, // purple
+      SECAM_YELLOW  = 0x0c,
+      SECAM_GREEN   = 0x08,
+      SECAM_BLUE    = 0x02,
+      SECAM_PURPLE  = 0x0a, // cyan
+      SECAM_GREY    = 0x00,
+
+      HBLANK_WHITE  = 0x0e
     };
 
   public:
@@ -97,21 +108,26 @@ class TIA : public Device
       Create a new TIA for the specified console
 
       @param console   The console the TIA is associated with
-      @param sound     The sound object the TIA is associated with
       @param settings  The settings object for this TIA device
     */
-    TIA(Console& console, Sound& sound, Settings& settings);
+    TIA(Console& console, Settings& settings);
 
     virtual ~TIA() = default;
 
   public:
     /**
-     * Configure the frame manager.
+      Configure the frame manager.
      */
     void setFrameManager(AbstractFrameManager *frameManager);
 
     /**
-     * Clear the configured frame manager and deteach the lifecycle callbacks.
+      Set the audio queue. This needs to be dynamic as the queue is created after
+      the timing has been determined.
+    */
+    void setAudioQueue(shared_ptr<AudioQueue> audioQueue);
+
+    /**
+      Clear the configured frame manager and deteach the lifecycle callbacks.
      */
     void clearFrameManager();
 
@@ -119,11 +135,6 @@ class TIA : public Device
       Reset device to its power-on state.
     */
     void reset() override;
-
-    /**
-      Reset frame to current YStart/Height properties.
-    */
-    void frameReset();
 
     /**
       Install TIA in the specified system.  Invoked by the system
@@ -193,7 +204,35 @@ class TIA : public Device
       desired frame rate to update the TIA.  Invoking this method will update
       the graphics buffer and generate the corresponding audio samples.
     */
-    void update();
+    void update(DispatchResult& result, uInt64 maxCycles = 50000);
+
+    void update(uInt64 maxCycles = 50000);
+
+    /**
+      Did we generate a new frame?
+     */
+    bool newFramePending() { return myFramesSinceLastRender  > 0; }
+
+    /**
+     * Clear any pending frames.
+     */
+    void clearPendingFrame() { myFramesSinceLastRender = 0; }
+
+    /**
+      The number of frames since we did last render to the front buffer.
+     */
+    uInt32 framesSinceLastRender() { return myFramesSinceLastRender; }
+
+    /**
+      Render the pending frame to the framebuffer and clear the flag.
+     */
+    void renderToFrameBuffer();
+
+    /**
+      Return the buffer that holds the currently drawing TIA frame
+      (the TIA output widget needs this).
+     */
+    uInt8* outputBuffer() { return myBackBuffer; }
 
     /**
       Returns a pointer to the internal frame buffer.
@@ -210,7 +249,7 @@ class TIA : public Device
     /**
       Changes the current Height/YStart properties.
       Note that calls to these method(s) must be eventually followed by
-      ::frameReset() for the changes to take effect.
+      ::reset() for the changes to take effect.
     */
     void setHeight(uInt32 height) { myFrameManager->setFixedHeight(height); }
     void setYStart(uInt32 ystart) { myFrameManager->setYstart(ystart); }
@@ -222,14 +261,6 @@ class TIA : public Device
       Answers the timing of the console currently in use.
     */
     ConsoleTiming consoleTiming() const { return myConsole.timing(); }
-
-    /**
-      Enables/disables auto-frame calculation.  If enabled, the TIA
-      re-adjusts the framerate at regular intervals.
-
-      @param enabled  Whether to enable or disable all auto-frame calculation
-    */
-    void enableAutoFrame(bool enabled) { myAutoFrameEnabled = enabled; }
 
     /**
       Enables/disables color-loss for PAL modes only.
@@ -275,6 +306,11 @@ class TIA : public Device
       @return The total number of scanlines generated in the last frame.
     */
     uInt32 scanlinesLastFrame() const { return myFrameManager->scanlinesLastFrame(); }
+
+    /**
+      The same, but for the frame in the frame buffer.
+     */
+    uInt32 frameBufferScanlinesLastFrame() const { return myFrameBufferScanlines; }
 
     /**
       Answers the total system cycles from the start of the emulation.
@@ -416,6 +452,11 @@ class TIA : public Device
     void flushLineCache();
 
     /**
+      Schedule a collision update
+     */
+    void scheduleCollisionUpdate();
+
+    /**
       Create a new delayQueueIterator for the debugger.
     */
     shared_ptr<DelayQueueIterator> delayQueueIterator() const;
@@ -437,13 +478,6 @@ class TIA : public Device
     bool load(Serializer& in) override;
 
     /**
-      Get a descriptor for the device name (used in error checking).
-
-      @return The name of the object
-    */
-    string name() const override { return "TIA"; }
-
-    /**
      * Run and forward TIA emulation to the current system clock.
      */
     void updateEmulation();
@@ -463,9 +497,9 @@ class TIA : public Device
     /**
      * Palette and indices for fixed debug colors.
      */
-    enum FixedObject { P0, M0, P1, M1, PF, BL };
-    FixedColor myFixedColorPalette[2][6];
-    string myFixedColorNames[6];
+    enum FixedObject { P0, M0, P1, M1, PF, BL, BK };
+    FixedColor myFixedColorPalette[3][7];
+    string myFixedColorNames[7];
 
   private:
 
@@ -507,14 +541,14 @@ class TIA : public Device
     void tickHframe();
 
     /**
-     * Execute a RSYNC.
-     */
-    void applyRsync();
-
-    /**
      * Update the collision bitfield.
      */
     void updateCollision();
+
+    /**
+     * Execute a RSYNC.
+     */
+    void applyRsync();
 
     /**
      * Render the current pixel into the framebuffer.
@@ -565,6 +599,25 @@ class TIA : public Device
     uInt8 collCXPPMM() const;
     uInt8 collCXBLPF() const;
 
+    /**
+      Toggle the specified collision bits
+    */
+    void toggleCollP0PF();
+    void toggleCollP0BL();
+    void toggleCollP0M1();
+    void toggleCollP0M0();
+    void toggleCollP0P1();
+    void toggleCollP1PF();
+    void toggleCollP1BL();
+    void toggleCollP1M1();
+    void toggleCollP1M0();
+    void toggleCollM0PF();
+    void toggleCollM0BL();
+    void toggleCollM0M1();
+    void toggleCollM1PF();
+    void toggleCollM1BL();
+    void toggleCollBLPF();
+
   #ifdef DEBUGGER_SUPPORT
     void createAccessBase();
 
@@ -586,7 +639,6 @@ class TIA : public Device
   private:
 
     Console& myConsole;
-    Sound& mySound;
     Settings& mySettings;
 
     /**
@@ -623,6 +675,8 @@ class TIA : public Device
     Player myPlayer1;
     Ball myBall;
 
+    Audio myAudio;
+
     /**
      * The paddle readout circuits.
      */
@@ -636,6 +690,18 @@ class TIA : public Device
 
     // Pointer to the internal color-index-based frame buffer
     uInt8 myFramebuffer[160 * TIAConstants::frameBufferHeight];
+
+    // The frame is rendered to the backbuffer and only copied to the framebuffer
+    // upon completion
+    uInt8 myBackBuffer[160 * TIAConstants::frameBufferHeight];
+    uInt8 myFrontBuffer[160 * TIAConstants::frameBufferHeight];
+
+    // We snapshot frame statistics when the back buffer is copied to the front buffer
+    // and when the front buffer is copied to the frame buffer
+    uInt32 myFrontBufferScanlines, myFrameBufferScanlines;
+
+    // Frames since the last time a frame was rendered to the render buffer
+    uInt32 myFramesSinceLastRender;
 
     /**
      * Setting this to true injects random values into undefined reads.
@@ -667,6 +733,11 @@ class TIA : public Device
      * Do we need to update the collision mask this clock?
      */
     bool myCollisionUpdateRequired;
+
+    /**
+     * Force schedule a collision update
+     */
+    bool myCollisionUpdateScheduled;
 
     /**
      * The collision latches are represented by 15 bits in a bitfield.
@@ -722,22 +793,15 @@ class TIA : public Device
     uInt8 myColorHBlank;
 
     /**
-     * The total number of color clocks since emulation started. This is a
-     * double a) to avoid overflows and b) as it will enter floating point
-     * expressions in the paddle readout simulation anyway.
+     * The total number of color clocks since emulation started.
      */
-    double myTimestamp;
+    uInt64 myTimestamp;
 
     /**
      * The "shadow registers" track the last written register value for the
      * debugger.
      */
     uInt8 myShadowRegisters[64];
-
-    /**
-     * Automatic framerate correction based on number of scanlines.
-     */
-    bool myAutoFrameEnabled;
 
     /**
      * Indicates if color loss should be enabled or disabled.  Color loss
@@ -758,13 +822,14 @@ class TIA : public Device
     bool myEnableJitter;
     uInt8 myJitterFactor;
 
-#ifdef DEBUGGER_SUPPORT
+  #ifdef DEBUGGER_SUPPORT
     // The arrays containing information about every byte of TIA
     // indicating whether and how (RW) it is used.
     BytePtr myAccessBase;
+
     // The array used to skip the first two TIA access trackings
     BytePtr myAccessDelay;
-#endif // DEBUGGER_SUPPORT
+  #endif // DEBUGGER_SUPPORT
 
     static constexpr uInt16
       TIA_SIZE = 0x40, TIA_MASK = TIA_SIZE - 1, TIA_READ_MASK = 0x0f, TIA_BIT = 0x080, TIA_DELAY = 2;

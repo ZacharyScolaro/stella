@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -84,6 +84,8 @@ class OptionsDialog : public Dialog
 
     // Indicates if this dialog is used for global (vs. in-game) settings
     stellaMode myMode;
+
+    GuiObject* _boss;
 
     enum {
       kVidCmd      = 'VIDO',

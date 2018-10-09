@@ -56,7 +56,7 @@ endif
 ifdef CLANG_WARNINGS
   CXXFLAGS+= -Weverything -Wno-c++17-extensions -Wno-c++98-compat -Wno-c++98-compat-pedantic \
     -Wno-double-promotion -Wno-switch-enum -Wno-conversion -Wno-covered-switch-default \
-    -Wno-inconsistent-missing-destructor-override \
+    -Wno-inconsistent-missing-destructor-override -Wno-float-equal \
     -Wno-exit-time-destructors -Wno-global-constructors -Wno-weak-vtables \
     -Wno-four-char-constants -Wno-padded
 endif
@@ -101,7 +101,8 @@ MODULES += \
 	src/emucore/tia/frame-manager \
 	src/gui \
 	src/common \
-	src/common/tv_filters
+	src/common/tv_filters \
+	src/common/audio
 
 ######################################################################
 # The build rules follow - normally you should have no need to
@@ -147,7 +148,7 @@ CXX_UPDATE_DEP_FLAG = -Wp,-MMD,"$(*D)/$(DEPDIR)/$(*F).d2"
 
 .c.o:
 	$(MKDIR) $(*D)/$(DEPDIR)
-	$(CXX) $(CXX_UPDATE_DEP_FLAG) $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
+	$(CC) $(CXX_UPDATE_DEP_FLAG) $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
 	$(ECHO) "$(*D)/" > $(*D)/$(DEPDIR)/$(*F).d
 	$(CAT) "$(*D)/$(DEPDIR)/$(*F).d2" >> "$(*D)/$(DEPDIR)/$(*F).d"
 	$(RM) "$(*D)/$(DEPDIR)/$(*F).d2"
@@ -162,7 +163,7 @@ else
 
 .c.o:
 	$(MKDIR) $(*D)/$(DEPDIR)
-	$(CXX) $(CXX_UPDATE_DEP_FLAG) $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
+	$(CC) $(CXX_UPDATE_DEP_FLAG) $(CXXFLAGS) $(CPPFLAGS) -c $(<) -o $*.o
 endif
 
 # Include the dependency tracking files. We add /dev/null at the end

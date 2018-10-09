@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -32,7 +32,7 @@ CartridgeCM::CartridgeCM(const BytePtr& image, uInt32 size,
   createCodeAccessBase(16384);
 
   // On powerup, the last bank of ROM is enabled and RAM is disabled
-  myStartBank = mySWCHA & 0x3;
+  initializeStartBank(mySWCHA & 0x3);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -41,7 +41,7 @@ void CartridgeCM::reset()
   initializeRAM(myRAM, 2048);
 
   // Upon reset we switch to the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -54,7 +54,7 @@ void CartridgeCM::install(System& system)
   mySystem->m6532().installDelegate(system, *this);
 
   // Install pages for the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -190,7 +190,6 @@ bool CartridgeCM::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putShort(myBankOffset);
     out.putByte(mySWCHA);
     out.putByte(myCompuMate->column());
@@ -210,9 +209,6 @@ bool CartridgeCM::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myBankOffset = in.getShort();
     mySWCHA = in.getByte();
     myCompuMate->column() = in.getByte();

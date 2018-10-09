@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -35,7 +35,7 @@ CartridgeDPCPlusWidget::CartridgeDPCPlusWidget(
        << "DPC registers accessible @ $F000 - $F07F\n"
        << "  $F000 - $F03F (R), $F040 - $F07F (W)\n"
        << "Banks accessible at hotspots $FFF6 to $FFFB\n"
-       << "Startup bank = " << cart.myStartBank << "\n";
+       << "Startup bank = " << cart.startBank() << "\n";
 
 #if 0
   // Eventually, we should query this from the debugger/disassembler
@@ -213,12 +213,14 @@ void CartridgeDPCPlusWidget::saveOldState()
 
   for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myDisplayImage[i]);
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeDPCPlusWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   // Get registers, using change tracking
   IntArray alist;

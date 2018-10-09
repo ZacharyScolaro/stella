@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -21,7 +21,6 @@
 #include "bspf.hxx"
 #include "Command.hxx"
 #include "Dialog.hxx"
-#include "Font.hxx"
 #include "FBSurface.hxx"
 #include "GuiObject.hxx"
 #include "OSystem.hxx"
@@ -39,8 +38,11 @@ Widget::Widget(GuiObject* boss, const GUI::Font& font,
     _hasFocus(false),
     _bgcolor(kWidColor),
     _bgcolorhi(kWidColor),
+    _bgcolorlo(kBGColorLo),
     _textcolor(kTextColor),
-    _textcolorhi(kTextColorHi)
+    _textcolorhi(kTextColorHi),
+    _textcolorlo(kBGColorLo),
+    _shadowcolor(kShadowColor)
 {
   // Insert into the widget list of the boss
   _next = _boss->_firstWidget;
@@ -48,6 +50,8 @@ Widget::Widget(GuiObject* boss, const GUI::Font& font,
 
   _fontWidth  = _font.getMaxCharWidth();
   _fontHeight = _font.getLineHeight();
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -60,16 +64,24 @@ Widget::~Widget()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Widget::setDirty()
+{
+  // A widget being dirty indicates that its parent dialog is dirty
+  // So we inform the parent about it
+  _boss->dialog().setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Widget::draw()
 {
-  if(!_dirty || !isVisible() || !_boss->isVisible())
+  if(!isVisible() || !_boss->isVisible())
     return;
-
-  _dirty = false;
 
   FBSurface& s = _boss->dialog().surface();
 
-  bool hasBorder = _flags & WIDGET_BORDER;
+  bool onTop = _boss->dialog().isOnTop();
+
+  bool hasBorder = _flags & WIDGET_BORDER; // currently only used by Dialog widget
   int oldX = _x, oldY = _y;
 
   // Account for our relative position in the dialog
@@ -84,17 +96,13 @@ void Widget::draw()
     {
       x++; y++; w-=2; h-=2;
     }
-    s.fillRect(x, y, w, h, (_flags & WIDGET_HILITED) ? _bgcolorhi : _bgcolor);
+    s.fillRect(x, y, w, h, !onTop ? _bgcolorlo : (_flags & WIDGET_HILITED) && isEnabled() ? _bgcolorhi : _bgcolor);
   }
 
   // Draw border
   if(hasBorder)
   {
-#ifndef FLAT_UI
-    s.box(_x, _y, _w, _h, kColor, kShadowColor);
-#else
-    s.frameRect(_x, _y, _w, _h, (_flags & WIDGET_HILITED) ? kScrollColorHi : kColor);
-#endif // !FLAT_UI
+    s.frameRect(_x, _y, _w, _h, !onTop ? kColor : (_flags & WIDGET_HILITED) && isEnabled() ? kWidColorHi : kColor);
     _x += 4;
     _y += 4;
     _w -= 8;
@@ -123,9 +131,6 @@ void Widget::draw()
     w->draw();
     w = w->_next;
   }
-
-  // Tell the framebuffer this area is dirty
-  s.setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -202,6 +207,8 @@ Widget* Widget::setFocusForChain(GuiObject* boss, WidgetArray& arr,
   FBSurface& s = boss->dialog().surface();
   int size = int(arr.size()), pos = -1;
   Widget* tmp;
+  bool onTop = boss->dialog().isOnTop();
+
   for(int i = 0; i < size; ++i)
   {
     tmp = arr[i];
@@ -225,10 +232,9 @@ Widget* Widget::setFocusForChain(GuiObject* boss, WidgetArray& arr,
       else
         tmp->_hasFocus = false;
 
-      s.frameRect(x, y, w, h, kDlgColor);
+      s.frameRect(x, y, w, h, onTop ? kDlgColor : kBGColorLo);
 
       tmp->setDirty();
-      s.setDirty();
     }
   }
 
@@ -237,24 +243,31 @@ Widget* Widget::setFocusForChain(GuiObject* boss, WidgetArray& arr,
     return nullptr;
   else
   {
-    switch(direction)
+    int oldPos = pos;
+    do
     {
-      case -1:  // previous widget
-        pos--;
-        if(pos < 0)
-          pos = size - 1;
-        break;
+      switch(direction)
+      {
+        case -1:  // previous widget
+          pos--;
+          if(pos < 0)
+            pos = size - 1;
+          break;
 
-      case +1:  // next widget
-        pos++;
-        if(pos >= size)
-          pos = 0;
-        break;
+        case +1:  // next widget
+          pos++;
+          if(pos >= size)
+            pos = 0;
+          break;
 
-      default:
-        // pos already set
+        default:
+          // pos already set
+          break;
+      }
+      // break if all widgets should be disabled
+      if(oldPos == pos)
         break;
-    }
+    } while(!arr[pos]->isEnabled());
   }
 
   // Now highlight the active widget
@@ -272,10 +285,10 @@ Widget* Widget::setFocusForChain(GuiObject* boss, WidgetArray& arr,
   else
     tmp->_hasFocus = true;
 
-  s.frameRect(x, y, w, h, kWidFrameColor, FrameStyle::Dashed);
+  if (onTop)
+      s.frameRect(x, y, w, h, kWidFrameColor, FrameStyle::Dashed);
 
   tmp->setDirty();
-  s.setDirty();
 
   return tmp;
 }
@@ -293,7 +306,8 @@ void Widget::setDirtyInChain(Widget* start)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 StaticTextWidget::StaticTextWidget(GuiObject* boss, const GUI::Font& font,
                                    int x, int y, int w, int h,
-                                   const string& text, TextAlign align)
+                                   const string& text, TextAlign align,
+                                   ColorId shadowColor)
   : Widget(boss, font, x, y, w, h),
     _align(align)
 {
@@ -302,6 +316,7 @@ StaticTextWidget::StaticTextWidget(GuiObject* boss, const GUI::Font& font,
   _bgcolorhi = kDlgColor;
   _textcolor = kTextColor;
   _textcolorhi = kTextColor;
+  _shadowcolor = shadowColor;
 
   _label = text;
   _editable = false;
@@ -310,8 +325,10 @@ StaticTextWidget::StaticTextWidget(GuiObject* boss, const GUI::Font& font,
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 StaticTextWidget::StaticTextWidget(GuiObject* boss, const GUI::Font& font,
                                    int x, int y,
-                                   const string& text, TextAlign align)
-  : StaticTextWidget(boss, font, x, y, font.getStringWidth(text), font.getLineHeight(), text, align)
+                                   const string& text, TextAlign align,
+                                   ColorId shadowColor)
+  : StaticTextWidget(boss, font, x, y, font.getStringWidth(text), font.getLineHeight(),
+                     text, align, shadowColor)
 {
 }
 
@@ -337,8 +354,11 @@ void StaticTextWidget::setLabel(const string& label)
 void StaticTextWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
   s.drawString(_font, _label, _x, _y, _w,
-               isEnabled() ? _textcolor : uInt32(kColor), _align);
+               isEnabled() && onTop ? _textcolor : kColor, _align, 0, true, _shadowcolor);
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -348,13 +368,18 @@ ButtonWidget::ButtonWidget(GuiObject* boss, const GUI::Font& font,
   : StaticTextWidget(boss, font, x, y, w, h, label, TextAlign::Center),
     CommandSender(boss),
     _cmd(cmd),
-    _useBitmap(false)
+    _useBitmap(false),
+    _bitmap(nullptr),
+    _bmw(0),
+    _bmh(0)
 {
-  _flags = WIDGET_ENABLED | WIDGET_BORDER | WIDGET_CLEARBG;
+  _flags = WIDGET_ENABLED | WIDGET_CLEARBG;
   _bgcolor = kBtnColor;
   _bgcolorhi = kBtnColorHi;
+  _bgcolorlo = kColor;
   _textcolor = kBtnTextColor;
   _textcolorhi = kBtnTextColorHi;
+  _textcolorlo = kBGColorLo;
 
   _editable = false;
 }
@@ -389,17 +414,15 @@ ButtonWidget::ButtonWidget(GuiObject* boss, const GUI::Font& font,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ButtonWidget::handleMouseEntered(int button)
+void ButtonWidget::handleMouseEntered()
 {
   setFlags(WIDGET_HILITED);
-  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ButtonWidget::handleMouseLeft(int button)
+void ButtonWidget::handleMouseLeft()
 {
   clearFlags(WIDGET_HILITED);
-  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -412,7 +435,7 @@ bool ButtonWidget::handleEvent(Event::Type e)
   {
     case Event::UISelect:
       // Simulate mouse event
-      handleMouseUp(0, 0, 1, 0);
+      handleMouseUp(0, 0, MouseButton::LEFT, 0);
       return true;
     default:
       return false;
@@ -420,7 +443,7 @@ bool ButtonWidget::handleEvent(Event::Type e)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void ButtonWidget::handleMouseUp(int x, int y, int button, int clickCount)
+void ButtonWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   if(isEnabled() && x >= 0 && x < _w && y >= 0 && y < _h)
   {
@@ -430,59 +453,39 @@ void ButtonWidget::handleMouseUp(int x, int y, int button, int clickCount)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void ButtonWidget::setBitmap(uInt32* bitmap, int bmw, int bmh)
+{
+  _bitmap = bitmap;
+  _bmh = bmh;
+  _bmw = bmw;
+  _useBitmap = true;
+
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void ButtonWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
+
+  s.frameRect(_x, _y, _w, _h, !onTop ? kShadowColor : hilite && isEnabled() ? kBtnBorderColorHi : kBtnBorderColor);
+
   if (!_useBitmap)
     s.drawString(_font, _label, _x, _y + (_h - _fontHeight)/2 + 1, _w,
-                 !isEnabled() ? hilite ? uInt32(kColor) : uInt32(kBGColorLo) :
+                 !(isEnabled() && onTop) ? _textcolorlo :
                  hilite ? _textcolorhi : _textcolor, _align);
   else
     s.drawBitmap(_bitmap, _x + (_w - _bmw) / 2, _y + (_h - _bmh) / 2,
-                 !isEnabled() ? hilite ? uInt32(kColor) : uInt32(kBGColorLo) :
+                 !(isEnabled() && onTop) ? _textcolorlo :
                  hilite ? _textcolorhi : _textcolor,
                  _bmw, _bmh);
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 /* 8x8 checkbox bitmap */
-#ifndef FLAT_UI
-static uInt32 checked_img_active[8] =
-{
-	0b11111111,
-	0b11111111,
-	0b11111111,
-	0b11111111,
-	0b11111111,
-	0b11111111,
-	0b11111111,
-	0b11111111
-};
-
-static uInt32 checked_img_inactive[8] =
-{
-	0b11111111,
-	0b11111111,
-	0b11100111,
-	0b11000011,
-	0b11000011,
-	0b11100111,
-	0b11111111,
-	0b11111111
-};
-
-static uInt32 checked_img_circle[8] =
-{
-	0b00011000,
-	0b01111110,
-	0b01111110,
-	0b11111111,
-	0b11111111,
-	0b01111110,
-	0b01111110,
-	0b00011000
-};
-#else
 static uInt32 checked_img_active[10] =
 {
   0b1111111111,
@@ -524,7 +527,7 @@ static uInt32 checked_img_circle[10] =
   0b0111111110,
   0b0001111000
 };
-#endif // !FLAT_UI
+
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
                                int x, int y, const string& label,
@@ -533,12 +536,14 @@ CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
     _state(false),
     _holdFocus(true),
     _drawBox(true),
+    _changed(false),
     _fillColor(kColor),
     _boxY(0),
     _textY(0)
 {
   _flags = WIDGET_ENABLED;
   _bgcolor = _bgcolorhi = kWidColor;
+  _bgcolorlo = kDlgColor;
 
   _editable = true;
 
@@ -560,21 +565,19 @@ CheckboxWidget::CheckboxWidget(GuiObject* boss, const GUI::Font& font,
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void CheckboxWidget::handleMouseEntered(int button)
+void CheckboxWidget::handleMouseEntered()
 {
   setFlags(WIDGET_HILITED);
-  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void CheckboxWidget::handleMouseLeft(int button)
+void CheckboxWidget::handleMouseLeft()
 {
   clearFlags(WIDGET_HILITED);
-  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void CheckboxWidget::handleMouseUp(int x, int y, int button, int clickCount)
+void CheckboxWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   if(isEnabled() && _editable && x >= 0 && x < _w && y >= 0 && y < _h)
   {
@@ -598,6 +601,7 @@ void CheckboxWidget::setEditable(bool editable)
     _bgcolor = kBGColorHi;
     setFill(CheckboxWidget::Inactive);
   }
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -618,58 +622,60 @@ void CheckboxWidget::setFill(FillType type)
       _drawBox = false;
       break;
   }
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void CheckboxWidget::setState(bool state)
+void CheckboxWidget::setState(bool state, bool changed)
 {
   if(_state != state)
   {
     _state = state;
     setDirty();
   }
+  _changed = changed;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CheckboxWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
 
-#ifndef FLAT_UI
-  // Draw the box
   if(_drawBox)
-    s.box(_x, _y + _boxY, 14, 14, kColor, kShadowColor);
+    s.frameRect(_x, _y + _boxY, 14, 14, onTop && hilite && isEnabled() && isEditable() ? kWidColorHi : kColor);
   // Do we draw a square or cross?
-  s.fillRect(_x + 2, _y + _boxY + 2, 10, 10, isEnabled() ? _bgcolor : kColor);
+  s.fillRect(_x + 1, _y + _boxY + 1, 12, 12,
+      _changed ? onTop ? kDbgChangedColor : kDlgColor :
+      isEnabled() ? onTop ? _bgcolor : kDlgColor : kColor);
   if(_state)
-    s.drawBitmap(_img, _x + 3, _y + _boxY + 3, isEnabled() ? kCheckColor : kShadowColor);
-#else
-  if(_drawBox)
-    s.frameRect(_x, _y + _boxY, 14, 14, hilite ? kScrollColorHi : kShadowColor);
-  // Do we draw a square or cross?
-  s.fillRect(_x + 1, _y + _boxY + 1, 12, 12, isEnabled() ? _bgcolor : kColor);
-  if(_state)
-    s.drawBitmap(_img, _x + 2, _y + _boxY + 2, isEnabled()
-                 ? hilite ? kScrollColorHi : kCheckColor
-                 : kShadowColor, 10);
-#endif
+    s.drawBitmap(_img, _x + 2, _y + _boxY + 2, onTop && isEnabled() ? hilite && isEditable() ? kWidColorHi : kCheckColor
+                 : kColor, 10);
 
   // Finally draw the label
   s.drawString(_font, _label, _x + 20, _y + _textY, _w,
-               isEnabled() ? kTextColor : kColor);
+               onTop && isEnabled() ? kTextColor : kColor);
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 SliderWidget::SliderWidget(GuiObject* boss, const GUI::Font& font,
                            int x, int y, int w, int h,
-                           const string& label, int labelWidth, int cmd)
+                           const string& label, int labelWidth, int cmd,
+                           int valueLabelWidth, const string& valueUnit, int valueLabelGap)
   : ButtonWidget(boss, font, x, y, w, h, label, cmd),
-    _value(0),
+    _value(-1),
     _stepValue(1),
     _valueMin(0),
     _valueMax(100),
     _isDragging(false),
-    _labelWidth(labelWidth)
+    _labelWidth(labelWidth),
+    _valueLabel(""),
+    _valueUnit(valueUnit),
+    _valueLabelGap(valueLabelGap),
+    _valueLabelWidth(valueLabelWidth),
+    _numIntervals(0)
 {
   _flags = WIDGET_ENABLED | WIDGET_TRACK_MOUSE;
   _bgcolor = kDlgColor;
@@ -678,7 +684,20 @@ SliderWidget::SliderWidget(GuiObject* boss, const GUI::Font& font,
   if(!_label.empty() && _labelWidth == 0)
     _labelWidth = _font.getStringWidth(_label);
 
-  _w = w + _labelWidth;
+  if(_valueLabelWidth == 0)
+    _valueLabelGap = 0;
+
+  _w = w + _labelWidth + _valueLabelGap + _valueLabelWidth;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+SliderWidget::SliderWidget(GuiObject* boss, const GUI::Font& font,
+                           int x, int y,
+                           const string& label, int labelWidth, int cmd,
+                           int valueLabelWidth, const string& valueUnit, int valueLabelGap)
+  : SliderWidget(boss, font, x, y, font.getMaxCharWidth() * 10, font.getLineHeight(),
+                 label, labelWidth, cmd, valueLabelWidth, valueUnit, valueLabelGap)
+{
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -691,6 +710,8 @@ void SliderWidget::setValue(int value)
   {
     _value = value;
     setDirty();
+    if (_valueLabelWidth)
+      setValueLabel(_value); // update label
     sendCommand(_cmd, _value, _id);
   }
 }
@@ -699,41 +720,76 @@ void SliderWidget::setValue(int value)
 void SliderWidget::setMinValue(int value)
 {
   _valueMin = value;
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void SliderWidget::setMaxValue(int value)
 {
   _valueMax = value;
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void SliderWidget::setStepValue(int value)
 {
   _stepValue = value;
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void SliderWidget::handleMouseMoved(int x, int y, int button)
+void SliderWidget::setValueLabel(const string& valueLabel)
+{
+  _valueLabel = valueLabel;
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void SliderWidget::setValueLabel(int value)
+{
+  char buf[256];
+  std::snprintf(buf, 255, "%d", value);
+  _valueLabel = buf;
+
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void SliderWidget::setValueUnit(const string& valueUnit)
+{
+  _valueUnit = valueUnit;
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void SliderWidget::setTickmarkInterval(int numIntervals)
+{
+  _numIntervals = numIntervals;
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void SliderWidget::handleMouseMoved(int x, int y)
 {
   // TODO: when the mouse is dragged outside the widget, the slider should
   // snap back to the old value.
-  if(isEnabled() && _isDragging && x >= int(_labelWidth))
+  if(isEnabled() && _isDragging &&
+     x >= int(_labelWidth - 4) && x <= int(_w - _valueLabelGap - _valueLabelWidth + 4))
     setValue(posToValue(x - _labelWidth));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void SliderWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void SliderWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
-  if(isEnabled())
+  if(isEnabled() && b == MouseButton::LEFT)
   {
     _isDragging = true;
-    handleMouseMoved(x, y, button);
+    handleMouseMoved(x, y);
   }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void SliderWidget::handleMouseUp(int x, int y, int button, int clickCount)
+void SliderWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   if(isEnabled() && _isDragging)
     sendCommand(_cmd, _value, _id);
@@ -792,51 +848,70 @@ void SliderWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
 
-#ifndef FLAT_UI
   // Draw the label, if any
   if(_labelWidth > 0)
-    s.drawString(_font, _label, _x, _y + 2, _labelWidth,
-                 isEnabled() ? kTextColor : kColor, TextAlign::Right);
+    s.drawString(_font, _label, _x, _y + 2, _labelWidth, isEnabled() ? kTextColor : kColor);
 
-  // Draw the box
-  s.box(_x + _labelWidth, _y, _w - _labelWidth, _h, kColor, kShadowColor);
-  // Fill the box
-  s.fillRect(_x + _labelWidth + 2, _y + 2, _w - _labelWidth - 4, _h - 4,
-             !isEnabled() ? kBGColorHi : kWidColor);
-  // Draw the 'bar'
-  s.fillRect(_x + _labelWidth + 2, _y + 2, valueToPos(_value), _h - 4,
-             !isEnabled() ? kColor : hilite ? kSliderColorHi : kSliderColor);
-#else
-  // Draw the label, if any
-  if(_labelWidth > 0)
-    s.drawString(_font, _label, _x, _y + 2, _labelWidth,
-                 isEnabled() ? kTextColor : kColor, TextAlign::Left);
+  int p = valueToPos(_value),
+    h = _h - 10,
+    x = _x + _labelWidth,
+    y = _y + (_h - h) / 2 + 1;
 
-  // Draw the box
-  s.frameRect(_x + _labelWidth, _y, _w - _labelWidth, _h, hilite ? kSliderColorHi : kShadowColor);
   // Fill the box
-  s.fillRect(_x + _labelWidth + 1, _y + 1, _w - _labelWidth - 2, _h - 2,
-             !isEnabled() ? kBGColorHi : kWidColor);
+  s.fillRect(x, y, _w - _labelWidth - _valueLabelGap - _valueLabelWidth, h,
+             !isEnabled() ? kSliderBGColorLo : hilite ? kSliderBGColorHi : kSliderBGColor);
   // Draw the 'bar'
-  s.fillRect(_x + _labelWidth + 2, _y + 2, valueToPos(_value), _h - 4,
+  s.fillRect(x, y, p, h,
              !isEnabled() ? kColor : hilite ? kSliderColorHi : kSliderColor);
-#endif
+
+  // Draw the 'tickmarks'
+  for(int i = 1; i < _numIntervals; ++i)
+  {
+    int xt = x + (_w - _labelWidth - _valueLabelGap - _valueLabelWidth) * i / _numIntervals - 1;
+    ColorId color = kNone;
+
+    if(isEnabled())
+    {
+      if(xt > x + p)
+        color = hilite ? kSliderColorHi : kSliderColor;
+      else
+        color = hilite ? kSliderBGColorHi : kSliderBGColor;
+    }
+    else
+    {
+      if(xt > x + p)
+        color = kColor;
+      else
+        color = kSliderBGColorLo;
+    }
+    s.vLine(xt, y + h / 2, y + h - 1, color);
+  }
+
+  // Draw the 'handle'
+  s.fillRect(x + p, y - 2, 2, h + 4,
+             !isEnabled() ? kColor : hilite ? kSliderColorHi : kSliderColor);
+
+  if(_valueLabelWidth > 0)
+    s.drawString(_font, _valueLabel + _valueUnit, _x + _w - _valueLabelWidth, _y + 2,
+                 _valueLabelWidth, isEnabled() ? kTextColor : kColor);
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-int SliderWidget::valueToPos(int value)
+int SliderWidget::valueToPos(int value) const
 {
   if(value < _valueMin)      value = _valueMin;
   else if(value > _valueMax) value = _valueMax;
   int range = std::max(_valueMax - _valueMin, 1);  // don't divide by zero
 
-  return ((_w - _labelWidth - 4) * (value - _valueMin) / range);
+  return ((_w - _labelWidth - _valueLabelGap - _valueLabelWidth - 2) * (value - _valueMin) / range);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-int SliderWidget::posToValue(int pos)
+int SliderWidget::posToValue(int pos) const
 {
-  int value = (pos) * (_valueMax - _valueMin) / (_w - _labelWidth - 4) + _valueMin;
+  int value = (pos) * (_valueMax - _valueMin) / (_w - _labelWidth - _valueLabelGap - _valueLabelWidth - 4) + _valueMin;
 
   // Scale the position to the correct interval (according to step value)
   return value - (value % _stepValue);

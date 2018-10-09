@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -100,7 +100,7 @@ string NTSCFilter::setPreviousAdjustable()
     return "'Custom' TV mode not selected";
 
   if(myCurrentAdjustable == 0) myCurrentAdjustable = 9;
-  else                         myCurrentAdjustable--;
+  else                         --myCurrentAdjustable;
   ostringstream buf;
   buf << "Custom adjustable '" << ourCustomAdjustables[myCurrentAdjustable].type
       << "' selected";

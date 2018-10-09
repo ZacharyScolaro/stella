@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,7 +28,8 @@ Player::Player(uInt32 collisionMask)
   : myCollisionMaskDisabled(collisionMask),
     myCollisionMaskEnabled(0xFFFF),
     myIsSuppressed(false),
-    myDecodesOffset(0)
+    myDecodesOffset(0),
+    myTIA(nullptr)
 {
   reset();
 }
@@ -52,9 +53,9 @@ void Player::reset()
   mySampleCounter = 0;
   myDividerPending = 0;
   myDividerChangeCounter = -1;
+  myPattern = 0;
 
   setDivider(1);
-  updatePattern();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -139,7 +140,7 @@ void Player::nusiz(uInt8 value, bool hblank)
           setDivider(myDividerPending);
         } else if (delta < (hblank ? 6 : 5)) {
           setDivider(myDividerPending);
-          myRenderCounter--;
+          --myRenderCounter;
         } else {
           myDividerChangeCounter = (hblank ? 0 : 1);
         }
@@ -281,12 +282,12 @@ void Player::tick()
     mySampleCounter = 0;
     myRenderCounter = Count::renderCounterOffset;
   } else if (myIsRendering) {
-    myRenderCounter++;
+    ++myRenderCounter;
 
     switch (myDivider) {
       case 1:
         if (myRenderCounter > 0)
-          mySampleCounter++;
+          ++mySampleCounter;
 
         if (myRenderCounter >= 0 && myDividerChangeCounter >= 0 && myDividerChangeCounter-- == 0)
           setDivider(myDividerPending);
@@ -295,7 +296,7 @@ void Player::tick()
 
       default:
         if (myRenderCounter > 1 && (((myRenderCounter - 1) % myDivider) == 0))
-          mySampleCounter++;
+          ++mySampleCounter;
 
         if (myRenderCounter > 0 && myDividerChangeCounter >= 0 && myDividerChangeCounter-- == 0)
           setDivider(myDividerPending);
@@ -307,6 +308,15 @@ void Player::tick()
   }
 
   if (++myCounter >= 160) myCounter = 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Player::nextLine()
+{
+  if (!myIsRendering || myRenderCounter < myRenderCounterTripPoint)
+    collision = myCollisionMaskDisabled;
+  else
+    collision = (myPattern & (1 << mySampleCounter)) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -372,6 +382,11 @@ void Player::updatePattern()
       ((myPattern & 0x80) >> 7)
     );
   }
+
+  if (myIsRendering && myRenderCounter >= myRenderCounterTripPoint) {
+    collision = (myPattern & (1 << mySampleCounter)) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
+    myTIA->scheduleCollisionUpdate();
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -429,8 +444,6 @@ bool Player::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     out.putInt(collision);
     out.putInt(myCollisionMaskDisabled);
     out.putInt(myCollisionMaskEnabled);
@@ -476,9 +489,6 @@ bool Player::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     collision = in.getInt();
     myCollisionMaskDisabled = in.getInt();
     myCollisionMaskEnabled = in.getInt();

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,6 +28,7 @@
 #include "Settings.hxx"
 #include "FSNode.hxx"
 #include "OSystem.hxx"
+#include "PNGLibrary.hxx"
 #include "System.hxx"
 
 #ifdef DEBUGGER_SUPPORT
@@ -124,15 +125,22 @@ int main(int argc, char* argv[])
   }
   else
   {
-    const string& result = theOSystem->createConsole(romnode);
-    if(result != EmptyString)
-      return Cleanup();
-
-    if(theOSystem->settings().getBool("takesnapshot"))
+    try
     {
-      theOSystem->logMessage("Taking snapshots with 'takesnapshot' ...", 2);
-      for(int i = 0; i < 30; ++i)  theOSystem->frameBuffer().update();
-      theOSystem->eventHandler().takeSnapshot();
+      const string& result = theOSystem->createConsole(romnode);
+      if(result != EmptyString)
+        return Cleanup();
+
+      if(theOSystem->settings().getBool("takesnapshot"))
+      {
+        for(int i = 0; i < 30; ++i)  theOSystem->frameBuffer().update();
+        theOSystem->png().takeSnapshot();
+        return Cleanup();
+      }
+    }
+    catch(const runtime_error& e)
+    {
+      theOSystem->logMessage(e.what(), 0);
       return Cleanup();
     }
 
@@ -143,7 +151,7 @@ int main(int argc, char* argv[])
     if(initBreak != "")
     {
       Debugger& dbg = theOSystem->debugger();
-      int bp = dbg.stringToValue(initBreak);
+      uInt16 bp = uInt16(dbg.stringToValue(initBreak));
       dbg.setBreakPoint(bp, true);
       theOSystem->settings().setValue("break", "");
     }

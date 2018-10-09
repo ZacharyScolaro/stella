@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -53,6 +53,11 @@ class Paddles : public Controller
       events currently set.
     */
     void update() override;
+
+    /**
+      Answers whether the controller is intrinsically an analog controller.
+    */
+    bool isAnalog() const override { return true; }
 
     /**
       Determines how this controller will treat values received from the

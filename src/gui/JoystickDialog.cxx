@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -16,6 +16,7 @@
 //============================================================================
 
 #include "OSystem.hxx"
+#include "EventHandler.hxx"
 #include "Widget.hxx"
 #include "Font.hxx"
 #include "EditTextWidget.hxx"
@@ -26,16 +27,16 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 JoystickDialog::JoystickDialog(GuiObject* boss, const GUI::Font& font,
                                int max_w, int max_h)
-  : Dialog(boss->instance(), boss->parent(), 0, 0, max_w, max_h)
+  : Dialog(boss->instance(), boss->parent(), font, "Joystick database", 0, 0, max_w, max_h)
 {
   int xpos, ypos;
   WidgetArray wid;
 
-  int buttonWidth = font.getStringWidth("Close") + 20,
+  int buttonWidth = font.getStringWidth("Remove ") + 20,
       buttonHeight = font.getLineHeight() + 4;
 
   // Joystick list
-  xpos = 10;  ypos = 10;
+  xpos = 10;  ypos = 10 + _th;
   int w = _w - 2 * xpos;
   int h = _h - buttonHeight - ypos - 20;
   myJoyList = new StringListWidget(this, font, xpos, ypos, w, h);
@@ -44,11 +45,9 @@ JoystickDialog::JoystickDialog(GuiObject* boss, const GUI::Font& font,
 
   // Joystick ID
   ypos = _h - buttonHeight - 10;
-  StaticTextWidget* t = new StaticTextWidget(this, font, xpos, ypos,
-      font.getStringWidth("Joystick ID "), font.getFontHeight(),
-      "Joystick ID ", TextAlign::Left);
+  StaticTextWidget* t = new StaticTextWidget(this, font, xpos, ypos+2, "Joystick ID ");
   xpos += t->getWidth() + 4;
-  myJoyText = new EditTextWidget(this, font, xpos, ypos-2,
+  myJoyText = new EditTextWidget(this, font, xpos, ypos,
       font.getStringWidth("Unplugged")+8, font.getLineHeight(), "");
   myJoyText->setEditable(false);
 
@@ -59,7 +58,7 @@ JoystickDialog::JoystickDialog(GuiObject* boss, const GUI::Font& font,
   addOKWidget(myCloseBtn);  addCancelWidget(myCloseBtn);
 
   buttonWidth = font.getStringWidth("Remove") + 20;
-  xpos -= buttonWidth + 5;
+  xpos -= buttonWidth + 8;
   myRemoveBtn = new ButtonWidget(this, font, xpos, ypos,
       buttonWidth, buttonHeight, "Remove", kRemoveCmd);
   myRemoveBtn->clearFlags(WIDGET_ENABLED);
@@ -76,7 +75,7 @@ void JoystickDialog::loadConfig()
   myJoyIDs.clear();
 
   StringList sticks;
-  for(const auto& i: instance().eventHandler().joystickDatabase())
+  for(const auto& i: instance().eventHandler().physicalJoystickDatabase())
   {
     sticks.push_back(i.first);
     myJoyIDs.push_back(i.second.toInt());
@@ -100,7 +99,8 @@ void JoystickDialog::handleCommand(CommandSender* sender, int cmd, int data, int
       break;
 
     case kRemoveCmd:
-      instance().eventHandler().removeJoystickFromDatabase(myJoyList->getSelectedString());
+      instance().eventHandler().removePhysicalJoystickFromDatabase(
+          myJoyList->getSelectedString());
       loadConfig();
       break;
 

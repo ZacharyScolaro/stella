@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -22,6 +22,7 @@
 #include "Version.hxx"
 #include "OSystem.hxx"
 #include "FrameBuffer.hxx"
+#include "EventHandler.hxx"
 #include "FSNode.hxx"
 #include "Settings.hxx"
 #include "DebuggerDialog.hxx"
@@ -53,6 +54,7 @@
 
 #include "TIA.hxx"
 #include "Debugger.hxx"
+#include "DispatchResult.hxx"
 
 Debugger* Debugger::myStaticDebugger = nullptr;
 
@@ -107,6 +109,8 @@ void Debugger::initialize()
   myBaseDialog = myDialog;
 
   myCartDebug->setDebugWidget(&(myDialog->cartDebug()));
+
+  saveOldState();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -153,6 +157,8 @@ void Debugger::quit(bool exitrom)
     myOSystem.eventHandler().handleEvent(Event::LauncherMode, 1);
   else
     myOSystem.eventHandler().leaveDebugMode();
+
+  myOSystem.console().tia().clearPendingFrame();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -223,9 +229,9 @@ const string Debugger::invIfChanged(int reg, int oldReg)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::reset()
 {
-  unlockBankswitchState();
+  unlockSystem();
   mySystem.reset();
-  lockBankswitchState();
+  lockSystem();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -250,21 +256,21 @@ string Debugger::setRAM(IntArray& args)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::saveState(int state)
 {
-  mySystem.clearDirtyPages();
-
-  unlockBankswitchState();
+  // Saving a state is implicitly a read-only operation, so we keep the
+  // system locked, so no changes can occur
   myOSystem.state().saveState(state);
-  lockBankswitchState();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::loadState(int state)
 {
+  // We're loading a new state, so we start with a clean slate
   mySystem.clearDirtyPages();
 
-  unlockBankswitchState();
+  // State loading could initiate a bankswitch, so we allow it temporarily
+  unlockSystem();
   myOSystem.state().loadState(state);
-  lockBankswitchState();
+  lockSystem();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -274,9 +280,9 @@ int Debugger::step()
 
   uInt64 startCycle = mySystem.cycles();
 
-  unlockBankswitchState();
+  unlockSystem();
   myOSystem.console().tia().updateScanlineByStep().flushLineCache();
-  lockBankswitchState();
+  lockSystem();
 
   addState("step");
   return int(mySystem.cycles() - startCycle);
@@ -302,9 +308,9 @@ int Debugger::trace()
     uInt64 startCycle = mySystem.cycles();
     int targetPC = myCpuDebug->pc() + 3; // return address
 
-    unlockBankswitchState();
+    unlockSystem();
     myOSystem.console().tia().updateScanlineByTrace(targetPC).flushLineCache();
-    lockBankswitchState();
+    lockSystem();
 
     addState("trace");
     return int(mySystem.cycles() - startCycle);
@@ -487,13 +493,13 @@ void Debugger::nextScanline(int lines)
 
   saveOldState();
 
-  unlockBankswitchState();
+  unlockSystem();
   while(lines)
   {
     myOSystem.console().tia().updateScanline();
     --lines;
   }
-  lockBankswitchState();
+  lockSystem();
 
   addState(buf.str());
   myOSystem.console().tia().flushLineCache();
@@ -507,13 +513,16 @@ void Debugger::nextFrame(int frames)
 
   saveOldState();
 
-  unlockBankswitchState();
+  unlockSystem();
+  DispatchResult dispatchResult;
   while(frames)
   {
-    myOSystem.console().tia().update();
+    do
+      myOSystem.console().tia().update(dispatchResult, myOSystem.console().emulationTiming().maxCyclesPerTimeslice());
+    while (dispatchResult.getStatus() == DispatchResult::Status::debugger);
     --frames;
   }
-  lockBankswitchState();
+  lockSystem();
 
   addState(buf.str());
 }
@@ -532,13 +541,13 @@ uInt16 Debugger::windStates(uInt16 numStates, bool unwind, string& message)
 
   saveOldState();
 
-  unlockBankswitchState();
+  unlockSystem();
 
   uInt64 startCycles = myOSystem.console().tia().cycles();
-  uInt16 winds = unwind ? r.unwindState(numStates) : r.rewindState(numStates);
+  uInt16 winds = r.windStates(numStates, unwind);
   message = r.getUnitString(myOSystem.console().tia().cycles() - startCycles);
 
-  lockBankswitchState();
+  lockSystem();
 
   updateRewindbuttons(r);
   return winds;
@@ -590,13 +599,15 @@ bool Debugger::patchROM(uInt16 addr, uInt8 value)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::saveOldState(bool clearDirtyPages)
 {
-  if (clearDirtyPages)
+  if(clearDirtyPages)
     mySystem.clearDirtyPages();
 
+  lockSystem();
   myCartDebug->saveOldState();
   myCpuDebug->saveOldState();
   myRiotDebug->saveOldState();
   myTiaDebug->saveOldState();
+  unlockSystem();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -612,14 +623,16 @@ void Debugger::addState(string rewindMsg)
 void Debugger::setStartState()
 {
   // Lock the bus each time the debugger is entered, so we don't disturb anything
-  lockBankswitchState();
+  lockSystem();
 
   // Save initial state and add it to the rewind list (except when in currently rewinding)
   RewindManager& r = myOSystem.state().rewindManager();
-  saveOldState(false);
-  // avoid invalidating future states when entering the debugger during rewind
-  if (r.atLast())
+  // avoid invalidating future states when entering the debugger e.g. during rewind
+  if(r.atLast() && (myOSystem.eventHandler().state() != EventHandlerState::TIMEMACHINE
+     || myOSystem.state().mode() == StateManager::Mode::Off))
     addState("enter debugger");
+  else
+    updateRewindbuttons(r);
 
   // Set the 're-disassemble' flag, but don't do it until the next scheduled time
   myDialog->rom().invalidate(false);
@@ -628,8 +641,10 @@ void Debugger::setStartState()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Debugger::setQuitState()
 {
+  saveOldState();
+
   // Bus must be unlocked for normal operation when leaving debugger mode
-  unlockBankswitchState();
+  unlockSystem();
 
   // execute one instruction on quit. If we're
   // sitting at a breakpoint/trap, this will get us past it.
@@ -702,14 +717,14 @@ const FunctionDefMap Debugger::getFunctionDefMap() const
 string Debugger::builtinHelp() const
 {
   ostringstream buf;
-  uInt16 len, c_maxlen = 0, i_maxlen = 0;
+  uInt32 len, c_maxlen = 0, i_maxlen = 0;
 
   // Get column widths for aligned output (functions)
   for(uInt32 i = 0; i < NUM_BUILTIN_FUNCS; ++i)
   {
-    len = ourBuiltinFunctions[i].name.size();
+    len = uInt32(ourBuiltinFunctions[i].name.size());
     if(len > c_maxlen)  c_maxlen = len;
-    len = ourBuiltinFunctions[i].defn.size();
+    len = uInt32(ourBuiltinFunctions[i].defn.size());
     if(len > i_maxlen)  i_maxlen = len;
   }
 
@@ -728,7 +743,7 @@ string Debugger::builtinHelp() const
   c_maxlen = 0;
   for(uInt32 i = 0; i < NUM_PSEUDO_REGS; ++i)
   {
-    len = ourPseudoRegisters[i].name.size();
+    len = uInt32(ourPseudoRegisters[i].name.size());
     if(len > c_maxlen)  c_maxlen = len;
   }
 
@@ -764,17 +779,23 @@ void Debugger::getCompletions(const char* in, StringList& list) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Debugger::lockBankswitchState()
+void Debugger::lockSystem()
 {
   mySystem.lockDataBus();
   myConsole.cartridge().lockBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Debugger::unlockBankswitchState()
+void Debugger::unlockSystem()
 {
   mySystem.unlockDataBus();
   myConsole.cartridge().unlockBank();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool Debugger::canExit() const
+{
+  return !myDialogStack.empty() && myDialogStack.top() == baseDialog();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

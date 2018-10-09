@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -153,14 +153,16 @@ void CartridgeCMWidget::saveOldState()
   myOldState.column = myCart.column();
 
   myOldState.internalram.clear();
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeCMWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   RiotDebug& riot = Debugger::debugger().riotDebug();
   const RiotState& state = static_cast<const RiotState&>(riot.getState());
@@ -194,8 +196,8 @@ void CartridgeCMWidget::loadConfig()
   myAudOut->setState(swcha & 0x40);
 
   // RAM state (several bits from SWCHA)
-  const string& ram = swcha & 0x10 ? " Inactive" :
-                        swcha & 0x20 ? " Read-only" : " Write-only";
+  const string& ram = (swcha & 0x10) ? " Inactive" :
+                      (swcha & 0x20) ? " Read-only" : " Write-only";
   myRAM->setText(ram, (swcha & 0x30) != (myOldState.swcha & 0x30));
 
   CartDebugWidget::loadConfig();
@@ -222,8 +224,8 @@ string CartridgeCMWidget::bankState()
   ostringstream& buf = buffer();
 
   buf << "Bank = " << std::dec << myCart.getBank()
-      << ", RAM is" << (myCart.mySWCHA & 0x10 ? " Inactive" :
-         myCart.mySWCHA & 0x20 ? " Read-only" : " Write-only");
+      << ", RAM is" << ((myCart.mySWCHA & 0x10) ? " Inactive" :
+         (myCart.mySWCHA & 0x20) ? " Read-only" : " Write-only");
 
   return buf.str();
 }

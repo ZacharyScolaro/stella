@@ -8,32 +8,34 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include "Dialog.hxx"
-#include "Font.hxx"
-#include "EventHandler.hxx"
-#include "FrameBuffer.hxx"
-#include "OSystem.hxx"
-#include "Widget.hxx"
-#include "RewindDialog.hxx"
+#include <cmath>
+#ifndef M_PI
+  #define M_PI 3.14159265358979323846f
+#endif
+
+#include "HighPass.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-RewindDialog::RewindDialog(OSystem& osystem, DialogContainer& parent,
-                           int max_w, int max_h)
-  : Dialog(osystem, parent)
-{
-  const GUI::Font& font = instance().frameBuffer().font();
-  const int buttonWidth = font.getStringWidth("Right Diff B") + 20,
-            buttonHeight = font.getLineHeight() + 6,
-            rowHeight = font.getLineHeight() + 10;
+HighPass::HighPass(float cutOffFrequency, float frequency)
+  : myLastValueIn(0),
+    myLastValueOut(0),
+    myAlpha(1.f / (1.f + 2.f*M_PI*cutOffFrequency/frequency))
+{}
 
-  // Set real dimensions
-  _w = 3 * (buttonWidth + 5) + 20;
-  _h = 6 * rowHeight + 15;
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+float HighPass::apply(float valueIn)
+{
+  float valueOut = myAlpha * (myLastValueOut + valueIn - myLastValueIn);
+
+  myLastValueIn = valueIn;
+  myLastValueOut = valueOut;
+
+  return valueOut;
 }

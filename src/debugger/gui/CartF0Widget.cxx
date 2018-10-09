@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,7 +30,7 @@ CartridgeF0Widget::CartridgeF0Widget(
 
   ostringstream info;
   info << "64K Megaboy F0 cartridge, 16 4K banks\n"
-       << "Startup bank = " << cart.myStartBank << " or undetermined\n"
+       << "Startup bank = " << cart.startBank() << " or undetermined\n"
        << "Bankswitch triggered by accessing $1FF0\n";
 
   // Eventually, we should query this from the debugger/disassembler
@@ -74,7 +74,12 @@ CartridgeF0Widget::CartridgeF0Widget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeF0Widget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  Debugger& dbg = instance().debugger();
+  CartDebug& cart = dbg.cartDebug();
+  const CartState& state = static_cast<const CartState&>(cart.getState());
+  const CartState& oldstate = static_cast<const CartState&>(cart.getOldState());
+
+  myBank->setSelectedIndex(myCart.getBank(), state.bank != oldstate.bank);
 
   CartDebugWidget::loadConfig();
 }

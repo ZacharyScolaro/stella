@@ -8,7 +8,7 @@
 // MM     MM 66  66 55  55 00  00 22
 // MM     MM  6666   5555   0000  222222
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -39,7 +39,7 @@ System::System(const OSystem& osystem, M6502& m6502, M6532& m6532,
     mySystemInAutodetect(false)
 {
   // Re-initialize random generator
-  randGenerator().initSeed();
+  randGenerator().initSeed(uInt32(myOSystem.getTicks()));
 
   // Initialize page access table
   PageAccess access(&myNullDevice, System::PA_READ);
@@ -202,7 +202,6 @@ bool System::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putLong(myCycles);
     out.putByte(myDataBusState);
 
@@ -232,9 +231,6 @@ bool System::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myCycles = in.getLong();
     myDataBusState = in.getByte();
 

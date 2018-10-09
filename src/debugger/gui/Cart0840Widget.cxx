@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,7 +30,7 @@ Cartridge0840Widget::Cartridge0840Widget(
 
   ostringstream info;
   info << "0840 ECONObanking, two 4K banks\n"
-       << "Startup bank = " << cart.myStartBank << "\n";
+       << "Startup bank = " << cart.startBank() << "\n";
 
   // Eventually, we should query this from the debugger/disassembler
   for(uInt32 i = 0, offset = 0xFFC, spot = 0x800; i < 2;
@@ -59,7 +59,12 @@ Cartridge0840Widget::Cartridge0840Widget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Cartridge0840Widget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  Debugger& dbg = instance().debugger();
+  CartDebug& cart = dbg.cartDebug();
+  const CartState& state = static_cast<const CartState&>(cart.getState());
+  const CartState& oldstate = static_cast<const CartState&>(cart.getOldState());
+
+  myBank->setSelectedIndex(myCart.getBank(), state.bank != oldstate.bank);
 
   CartDebugWidget::loadConfig();
 }

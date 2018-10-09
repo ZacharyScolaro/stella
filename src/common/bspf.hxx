@@ -8,7 +8,7 @@
 //  BB  BB  SS  SS  PP      FF
 //  BBBBB    SSSS   PP      FF
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -25,6 +25,7 @@
   @author Bradford W. Mott and Stephen Anthony
 */
 
+#include <climits>
 #include <cstdint>
 // Types for 8/16/32/64-bit signed and unsigned integers
 using Int8   = int8_t;
@@ -48,6 +49,7 @@ using uInt64 = uint64_t;
 #include <cstring>
 #include <cctype>
 #include <cstdio>
+#include <ctime>
 #include <utility>
 #include <vector>
 
@@ -76,6 +78,7 @@ using std::memcpy;
 
 // Common array types
 using IntArray = std::vector<Int32>;
+using uIntArray = std::vector<uInt32>;
 using BoolArray = std::vector<bool>;
 using ByteArray = std::vector<uInt8>;
 using ShortArray = std::vector<uInt16>;
@@ -92,10 +95,6 @@ namespace BSPF
     #define ATTRIBUTE_FMT_PRINTF __attribute__((__format__ (__printf__, 2, 0)))
   #elif defined(BSPF_WINDOWS)
     static const string PATH_SEPARATOR = "\\";
-    #pragma warning (disable : 4146)  // unary minus operator applied to unsigned type
-    #pragma warning(2:4264)  // no override available for virtual member function from base 'class'; function is hidden
-    #pragma warning(2:4265)  // class has virtual functions, but destructor is not virtual
-    #pragma warning(2:4266)  // no override available for virtual member function from base 'type'; function is hidden
     #define ATTRIBUTE_FMT_PRINTF
   #else
     #error Update src/common/bspf.hxx for path separator
@@ -202,7 +201,7 @@ namespace BSPF
     if(BSPF::startsWithIgnoreCase(s1, s2.substr(0, 1)))
     {
       size_t pos = 1;
-      for(uInt32 j = 1; j < s2.size(); j++)
+      for(uInt32 j = 1; j < s2.size(); ++j)
       {
         size_t found = BSPF::findIgnoreCase(s1, s2.substr(j, 1), pos);
         if(found == string::npos)
@@ -212,6 +211,21 @@ namespace BSPF
       return true;
     }
     return false;
+  }
+
+  // C++11 way to get local time
+  // Equivalent to the C-style localtime() function, but is thread-safe
+  inline std::tm localTime()
+  {
+    std::time_t currtime;
+    std::time(&currtime);
+    std::tm tm_snapshot;
+  #if defined BSPF_WINDOWS && !defined __GNUG__
+    localtime_s(&tm_snapshot, &currtime);
+  #else
+    localtime_r(&currtime, &tm_snapshot);
+  #endif
+    return tm_snapshot;
   }
 } // namespace BSPF
 

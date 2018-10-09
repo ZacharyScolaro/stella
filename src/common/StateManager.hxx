@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -43,7 +43,7 @@ class StateManager
     /**
       Create a new statemananger class.
     */
-    StateManager(OSystem& osystem);
+    explicit StateManager(OSystem& osystem);
     ~StateManager();
 
   public:
@@ -72,14 +72,25 @@ class StateManager
     void setRewindMode(Mode mode) { myActiveMode = mode; }
 
     /**
-      Rewinds one state; this uses the RewindManager for its functionality.
+      Optionally adds one extra state when entering the Time Machine dialog;
+      this uses the RewindManager for its functionality.
     */
-    bool rewindState(uInt32 numStates = 1);
+    bool addExtraState(const string& message);
 
     /**
-      Unwinds one state; this uses the RewindManager for its functionality.
+      Rewinds states; this uses the RewindManager for its functionality.
     */
-    bool unwindState(uInt32 numStates = 1);
+    bool rewindStates(uInt32 numStates = 1);
+
+    /**
+      Unwinds states; this uses the RewindManager for its functionality.
+    */
+    bool unwindStates(uInt32 numStates = 1);
+
+    /**
+      Rewinds/unwinds states; this uses the RewindManager for its functionality.
+    */
+    bool windStates(uInt32 numStates, bool unwind);
 
     /**
       Updates the state of the system based on the currently active mode.

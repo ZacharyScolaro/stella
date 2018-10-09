@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,9 +30,9 @@
    size: 95
    ascent: 14
    descent: 4
-   first char: 30 (0x1e)
+   first char: 29 (0x1d)
    last char: 126 (0x7e)
-   default char: 30 (0x1e)
+   default char: 32 (0x20)
    proportional: no
    Public domain font.  Share and enjoy.
 */

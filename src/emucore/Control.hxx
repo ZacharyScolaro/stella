@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -62,7 +62,7 @@ class System;
 class Controller : public Serializable
 {
   /**
-    Riot debug class needs special access to the underlying controller state
+    Various classes that need special access to the underlying controller state
   */
   friend class M6532;
   friend class RiotDebug;
@@ -172,6 +172,12 @@ class Controller : public Serializable
     virtual void update() = 0;
 
     /**
+      Answers whether the controller is intrinsically an analog controller.
+      Specific controllers should override and implement this method.
+    */
+    virtual bool isAnalog() const { return false; }
+
+    /**
       Notification method invoked by the system after its reset method has
       been called.  It may be necessary to override this method for
       controllers that need to know a reset has occurred.
@@ -210,7 +216,7 @@ class Controller : public Serializable
     */
     virtual string about(bool swappedPorts) const
     {
-      return name() + " in " + ((myJack == Left) ^ swappedPorts ?
+      return name() + " in " + (((myJack == Left) ^ swappedPorts) ?
           "left port" : "right port");
     }
 
@@ -245,7 +251,7 @@ class Controller : public Serializable
     /**
       Returns the name of this controller.
     */
-    string name() const override { return myName; }
+    string name() const { return myName; }
 
     /**
       Inject a callback to be notified on analog pin updates.
@@ -256,10 +262,10 @@ class Controller : public Serializable
 
   public:
     /// Constant which represents maximum resistance for analog pins
-    static constexpr Int32 maximumResistance = 0x7FFFFFFF;
+    static constexpr Int32 MAX_RESISTANCE = 0x7FFFFFFF;
 
     /// Constant which represents minimum resistance for analog pins
-    static constexpr Int32 minimumResistance = 0x00000000;
+    static constexpr Int32 MIN_RESISTANCE = 0x00000000;
 
   protected:
     void updateAnalogPin(AnalogPin, Int32 value);

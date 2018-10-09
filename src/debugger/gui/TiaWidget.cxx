@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -127,12 +127,11 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
                          2*fontWidth, fontHeight,
                          rowLabel[row], TextAlign::Left);
 
-    for(uInt32 col = 0; col < 5 - row; ++col)
+    for(uInt32 col = 0; col < 5 - row; ++col, ++idx)
     {
-      myCollision[idx] = new CheckboxWidget(boss, lfont, collX, collY, "");
+      myCollision[idx] = new CheckboxWidget(boss, lfont, collX, collY, "", CheckboxWidget::kCheckActionCmd);
       myCollision[idx]->setTarget(this);
       myCollision[idx]->setID(idx);
-      myCollision[idx]->setEditable(false);  // TODO - enable this?
 
       // We need to know where the PF_BL register is, to properly position
       // the CXCLR button
@@ -150,7 +149,6 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
                            colLabel[col], TextAlign::Left);
 
       collX += myCollision[idx]->getWidth() + 10;
-      idx++;
     }
     collX = xpos + lwidth + 5;
     collY += lineHeight+3;
@@ -175,7 +173,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myGRP0 = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 8, 1);
   myGRP0->setTarget(this);
   myGRP0->setID(kGRP0ID);
-  myGRP0->setBackgroundColor(-1);
+  myGRP0->clearBackgroundColor();
   addFocusWidget(myGRP0);
 
   // posP0
@@ -222,7 +220,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myGRP0Old = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 8, 1);
   myGRP0Old->setTarget(this);
   myGRP0Old->setID(kGRP0OldID);
-  myGRP0Old->setBackgroundColor(-1);
+  myGRP0Old->clearBackgroundColor();
   addFocusWidget(myGRP0Old);
 
   // P0 delay
@@ -260,7 +258,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myGRP1 = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 8, 1);
   myGRP1->setTarget(this);
   myGRP1->setID(kGRP1ID);
-  myGRP1->setBackgroundColor(-1);
+  myGRP1->clearBackgroundColor();
   addFocusWidget(myGRP1);
 
   // posP1
@@ -306,7 +304,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myGRP1Old = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 8, 1);
   myGRP1Old->setTarget(this);
   myGRP1Old->setID(kGRP1OldID);
-  myGRP1Old->setBackgroundColor(-1);
+  myGRP1Old->clearBackgroundColor();
   addFocusWidget(myGRP1Old);
 
   // P1 delay
@@ -344,7 +342,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myEnaM0 = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 1, 1);
   myEnaM0->setTarget(this);
   myEnaM0->setID(kEnaM0ID);
-  myEnaM0->setBackgroundColor(-1);
+  myEnaM0->clearBackgroundColor();
   addFocusWidget(myEnaM0);
 
   // posM0
@@ -407,7 +405,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myEnaM1 = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 1, 1);
   myEnaM1->setTarget(this);
   myEnaM1->setID(kEnaM1ID);
-  myEnaM1->setBackgroundColor(-1);
+  myEnaM1->clearBackgroundColor();
   addFocusWidget(myEnaM1);
 
   // posM0
@@ -470,7 +468,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myEnaBL = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 1, 1);
   myEnaBL->setTarget(this);
   myEnaBL->setID(kEnaBLID);
-  myEnaBL->setBackgroundColor(-1);
+  myEnaBL->clearBackgroundColor();
   addFocusWidget(myEnaBL);
 
   // posBL
@@ -519,7 +517,7 @@ TiaWidget::TiaWidget(GuiObject* boss, const GUI::Font& lfont,
   myEnaBLOld = new TogglePixelWidget(boss, nfont, xpos, ypos+1, 1, 1);
   myEnaBLOld->setTarget(this);
   myEnaBLOld->setID(kEnaBLOldID);
-  myEnaBLOld->setBackgroundColor(-1);
+  myEnaBLOld->clearBackgroundColor();
   addFocusWidget(myEnaBLOld);
 
   // Ball delay
@@ -827,6 +825,64 @@ void TiaWidget::handleCommand(CommandSender* sender, int cmd, int data, int id)
     case CheckboxWidget::kCheckActionCmd:
       switch(id)
       {
+        case kP0_PFID:
+          tia.collision(CollisionBit::P0PF, true);
+          break;
+
+        case kP0_BLID:
+          tia.collision(CollisionBit::P0BL, true);
+          break;
+
+        case kP0_M1ID:
+          tia.collision(CollisionBit::M1P0, true);
+          break;
+
+        case kP0_M0ID:
+          tia.collision(CollisionBit::M0P0, true);
+          break;
+
+        case kP0_P1ID:
+          tia.collision(CollisionBit::P0P1, true);
+          break;
+
+        case kP1_PFID:
+          tia.collision(CollisionBit::P1PF, true);
+          break;
+        case kP1_BLID:
+          tia.collision(CollisionBit::P1BL, true);
+          break;
+
+        case kP1_M1ID:
+          tia.collision(CollisionBit::M1P1, true);
+          break;
+        case kP1_M0ID:
+          tia.collision(CollisionBit::M0P1, true);
+          break;
+
+        case kM0_PFID:
+          tia.collision(CollisionBit::M0PF, true);
+          break;
+
+        case kM0_BLID:
+          tia.collision(CollisionBit::M0BL, true);
+          break;
+
+        case kM0_M1ID:
+          tia.collision(CollisionBit::M0M1, true);
+          break;
+
+        case kM1_PFID:
+          tia.collision(CollisionBit::M1PF, true);
+          break;
+
+        case kM1_BLID:
+          tia.collision(CollisionBit::M1BL, true);
+          break;
+
+        case kBL_PFID:
+          tia.collision(CollisionBit::BLPF, true);
+          break;
+
         case kRefP0ID:
           tia.refP0(myRefP0->getState() ? 1 : 0);
           break;
@@ -885,7 +941,7 @@ void TiaWidget::loadConfig()
 
   // Color registers
   alist.clear();  vlist.clear();  changed.clear();
-  for(uInt32 i = 0; i < 4; i++)
+  for(uInt32 i = 0; i < 4; ++i)
   {
     alist.push_back(i);
     vlist.push_back(state.coluRegs[i]);
@@ -915,21 +971,21 @@ void TiaWidget::loadConfig()
   ////////////////////////////
   // Collision register bits
   ////////////////////////////
-  myCollision[kP0_PFID]->setState(tia.collP0_PF());
-  myCollision[kP0_BLID]->setState(tia.collP0_BL());
-  myCollision[kP0_M1ID]->setState(tia.collM1_P0());
-  myCollision[kP0_M0ID]->setState(tia.collM0_P0());
-  myCollision[kP0_P1ID]->setState(tia.collP0_P1());
-  myCollision[kP1_PFID]->setState(tia.collP1_PF());
-  myCollision[kP1_BLID]->setState(tia.collP1_BL());
-  myCollision[kP1_M1ID]->setState(tia.collM1_P1());
-  myCollision[kP1_M0ID]->setState(tia.collM0_P1());
-  myCollision[kM0_PFID]->setState(tia.collM0_PF());
-  myCollision[kM0_BLID]->setState(tia.collM0_BL());
-  myCollision[kM0_M1ID]->setState(tia.collM0_M1());
-  myCollision[kM1_PFID]->setState(tia.collM1_PF());
-  myCollision[kM1_BLID]->setState(tia.collM1_BL());
-  myCollision[kBL_PFID]->setState(tia.collBL_PF());
+  myCollision[kP0_PFID]->setState(tia.collP0_PF(), state.cx[0] != oldstate.cx[0]);
+  myCollision[kP0_BLID]->setState(tia.collP0_BL(), state.cx[1] != oldstate.cx[1]);
+  myCollision[kP0_M1ID]->setState(tia.collM1_P0(), state.cx[2] != oldstate.cx[2]);
+  myCollision[kP0_M0ID]->setState(tia.collM0_P0(), state.cx[3] != oldstate.cx[3]);
+  myCollision[kP0_P1ID]->setState(tia.collP0_P1(), state.cx[4] != oldstate.cx[4]);
+  myCollision[kP1_PFID]->setState(tia.collP1_PF(), state.cx[5] != oldstate.cx[5]);
+  myCollision[kP1_BLID]->setState(tia.collP1_BL(), state.cx[6] != oldstate.cx[6]);
+  myCollision[kP1_M1ID]->setState(tia.collM1_P1(), state.cx[7] != oldstate.cx[7]);
+  myCollision[kP1_M0ID]->setState(tia.collM0_P1(), state.cx[8] != oldstate.cx[8]);
+  myCollision[kM0_PFID]->setState(tia.collM0_PF(), state.cx[9] != oldstate.cx[9]);
+  myCollision[kM0_BLID]->setState(tia.collM0_BL(), state.cx[10] != oldstate.cx[10]);
+  myCollision[kM0_M1ID]->setState(tia.collM0_M1(), state.cx[11] != oldstate.cx[11]);
+  myCollision[kM1_PFID]->setState(tia.collM1_PF(), state.cx[12] != oldstate.cx[12]);
+  myCollision[kM1_BLID]->setState(tia.collM1_BL(), state.cx[13] != oldstate.cx[13]);
+  myCollision[kBL_PFID]->setState(tia.collBL_PF(), state.cx[14] != oldstate.cx[14]);
 
   ////////////////////////////
   // P0 register info
@@ -957,8 +1013,8 @@ void TiaWidget::loadConfig()
   myHMP0->setList(0, state.hm[P0], state.hm[P0] != oldstate.hm[P0]);
 
   // refP0 & vdelP0
-  myRefP0->setState(tia.refP0());
-  myDelP0->setState(tia.vdelP0());
+  myRefP0->setState(tia.refP0(), state.ref[P0] != oldstate.ref[P0]);
+  myDelP0->setState(tia.vdelP0(), state.vdel[P0] != oldstate.vdel[P0]);
 
   // NUSIZ0 (player portion)
   bool nusiz0changed = state.size[P0] != oldstate.size[P0];
@@ -991,8 +1047,8 @@ void TiaWidget::loadConfig()
   myHMP1->setList(0, state.hm[P1], state.hm[P1] != oldstate.hm[P1]);
 
   // refP1 & vdelP1
-  myRefP1->setState(tia.refP1());
-  myDelP1->setState(tia.vdelP1());
+  myRefP1->setState(tia.refP1(), state.ref[P1] != oldstate.ref[P1]);
+  myDelP1->setState(tia.vdelP1(), state.vdel[P1] != oldstate.vdel[P1]);
 
   // NUSIZ1 (player portion)
   bool nusiz1changed = state.size[P1] != oldstate.size[P1];
@@ -1004,7 +1060,7 @@ void TiaWidget::loadConfig()
   ////////////////////////////
   // enaM0
   myEnaM0->setColor(state.coluRegs[0]);
-  myEnaM0->setIntState(tia.enaM0() ? 1: 0, false);
+  myEnaM0->setIntState(tia.enaM0() ? 1 : 0, false);
 
   // posM0
   myPosM0->setList(0, state.pos[M0], state.pos[M0] != oldstate.pos[M0]);
@@ -1016,14 +1072,14 @@ void TiaWidget::loadConfig()
   myNusizM0->setList(0, state.size[M0], state.size[M0] != oldstate.size[M0]);
 
   // resMP0
-  myResMP0->setState(tia.resMP0());
+  myResMP0->setState(tia.resMP0(), state.res[P0] != oldstate.res[P0]);
 
   ////////////////////////////
   // M1 register info
   ////////////////////////////
   // enaM1
   myEnaM1->setColor(state.coluRegs[1]);
-  myEnaM1->setIntState(tia.enaM1() ? 1: 0, false);
+  myEnaM1->setIntState(tia.enaM1() ? 1 : 0, false);
 
   // posM1
   myPosM1->setList(0, state.pos[M1], state.pos[M1] != oldstate.pos[M1]);
@@ -1035,7 +1091,7 @@ void TiaWidget::loadConfig()
   myNusizM1->setList(0, state.size[M1], state.size[M1] != oldstate.size[M1]);
 
   // resMP1
-  myResMP1->setState(tia.resMP1());
+  myResMP1->setState(tia.resMP1(),state.res[P1] != oldstate.res[P1]);
 
   ////////////////////////////
   // BL register info
@@ -1066,7 +1122,7 @@ void TiaWidget::loadConfig()
   mySizeBL->setList(0, state.size[BL], state.size[BL] != oldstate.size[BL]);
 
   // vdelBL
-  myDelBL->setState(tia.vdelBL());
+  myDelBL->setState(tia.vdelBL(), state.vdel[2] != oldstate.vdel[2]);
 
   ////////////////////////////
   // PF register info
@@ -1084,13 +1140,13 @@ void TiaWidget::loadConfig()
   myPF[2]->setIntState(state.pf[2], true);  // reverse bit order
 
   // Reflect
-  myRefPF->setState(tia.refPF());
+  myRefPF->setState(tia.refPF(), state.pf[3] != oldstate.pf[3]);
 
   // Score
-  myScorePF->setState(tia.scorePF());
+  myScorePF->setState(tia.scorePF(), state.pf[4] != oldstate.pf[4]);
 
   // Priority
-  myPriorityPF->setState(tia.priorityPF());
+  myPriorityPF->setState(tia.priorityPF(), state.pf[5] != oldstate.pf[5]);
 
   myDelayQueueWidget->loadConfig();
 }

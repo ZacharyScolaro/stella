@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -27,7 +27,7 @@
 
 #include "StateManager.hxx"
 
-#define STATE_HEADER "05000304state"
+#define STATE_HEADER "05099200state"
 // #define MOVIE_HEADER "03030000movie"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -142,17 +142,35 @@ void StateManager::toggleTimeMachine()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool StateManager::rewindState(uInt32 numStates)
+bool StateManager::addExtraState(const string& message)
 {
-  RewindManager& r = myOSystem.state().rewindManager();
-  return r.rewindState(numStates);
+  if(myActiveMode == Mode::TimeMachine)
+  {
+    RewindManager& r = myOSystem.state().rewindManager();
+    return r.addState(message);
+  }
+  return false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool StateManager::unwindState(uInt32 numStates)
+bool StateManager::rewindStates(uInt32 numStates)
 {
   RewindManager& r = myOSystem.state().rewindManager();
-  return r.unwindState(numStates);
+  return r.rewindStates(numStates);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool StateManager::unwindStates(uInt32 numStates)
+{
+  RewindManager& r = myOSystem.state().rewindManager();
+  return r.unwindStates(numStates);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool StateManager::windStates(uInt32 numStates, bool unwind)
+{
+  RewindManager& r = myOSystem.state().rewindManager();
+  return r.windStates(numStates, unwind);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -211,8 +229,6 @@ void StateManager::loadState(int slot)
     {
       if(in.getString() != STATE_HEADER)
         buf << "Incompatible state " << slot << " file";
-      else if(in.getString() != myOSystem.console().cartridge().name())
-        buf << "State " << slot << " file doesn't match current ROM";
       else
       {
         if(myOSystem.console().load(in))
@@ -257,9 +273,6 @@ void StateManager::saveState(int slot)
       // Add header so that if the state format changes in the future,
       // we'll know right away, without having to parse the rest of the file
       out.putString(STATE_HEADER);
-
-      // Sanity check; prepend the cart type/name
-      out.putString(myOSystem.console().cartridge().name());
     }
     catch(...)
     {
@@ -307,10 +320,9 @@ bool StateManager::loadState(Serializer& in)
       // Make sure the file can be opened for reading
       if(in)
       {
-        // First test if we have a valid header and cart type
+        // First test if we have a valid header
         // If so, do a complete state load using the Console
         return in.getString() == STATE_HEADER &&
-               in.getString() == myOSystem.console().cartridge().name() &&
                myOSystem.console().load(in);
       }
     }
@@ -335,9 +347,6 @@ bool StateManager::saveState(Serializer& out)
         // Add header so that if the state format changes in the future,
         // we'll know right away, without having to parse the rest of the file
         out.putString(STATE_HEADER);
-
-        // Sanity check; prepend the cart type/name
-        out.putString(myOSystem.console().cartridge().name());
 
         // Do a complete state save using the Console
         if(myOSystem.console().save(out))

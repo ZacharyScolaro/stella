@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -40,17 +40,19 @@ class FrameBufferSDL2 : public FrameBuffer
     /**
       Creates a new SDL2 framebuffer
     */
-    FrameBufferSDL2(OSystem& osystem);
+    explicit FrameBufferSDL2(OSystem& osystem);
     virtual ~FrameBufferSDL2();
 
     //////////////////////////////////////////////////////////////////////
     // The following are derived from public methods in FrameBuffer.hxx
     //////////////////////////////////////////////////////////////////////
+
     /**
-      Toggles the use of grabmouse (only has effect in emulation mode).
-      The method changes the 'grabmouse' setting and saves it.
+      Updates window title.
+
+      @param title  The title of the application / window
     */
-    void toggleGrabMouse();
+    void setTitle(const string& title) override;
 
     /**
       Shows or hides the cursor based on the given boolean value.
@@ -143,8 +145,8 @@ class FrameBufferSDL2 : public FrameBuffer
       @param h     The requested height of the new surface.
       @param data  If non-null, use the given data values as a static surface
     */
-    unique_ptr<FBSurface> createSurface(uInt32 w, uInt32 h, const uInt32* data)
-        const override;
+    unique_ptr<FBSurface>
+        createSurface(uInt32 w, uInt32 h, const uInt32* data) const override;
 
     /**
       Grabs or ungrabs the mouse based on the given boolean value.
@@ -162,9 +164,10 @@ class FrameBufferSDL2 : public FrameBuffer
     string about() const override;
 
     /**
-      This method is called after any drawing is done (per-frame).
+      This method must be called after all drawing is done, and indicates
+      that the buffers should be pushed to the physical screen.
     */
-    void postFrameUpdate() override;
+    void renderToScreen() override;
 
   private:
     // The SDL video buffer
@@ -173,9 +176,6 @@ class FrameBufferSDL2 : public FrameBuffer
 
     // Used by mapRGB (when palettes are created)
     SDL_PixelFormat* myPixelFormat;
-
-    // Indicates that the renderer has been modified, and should be redrawn
-    bool myDirtyFlag;
 
   private:
     // Following constructors and assignment operators not supported

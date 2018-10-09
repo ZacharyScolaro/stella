@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -19,6 +19,7 @@
 //============================================================================
 
 #include "OSystem.hxx"
+#include "EventHandler.hxx"
 #include "FrameBuffer.hxx"
 #include "FBSurface.hxx"
 #include "Font.hxx"
@@ -26,7 +27,14 @@
 #include "Dialog.hxx"
 #include "Widget.hxx"
 #include "TabWidget.hxx"
+
+#include "ContextMenu.hxx"
+#include "PopUpWidget.hxx"
+#include "Settings.hxx"
+#include "Console.hxx"
+
 #include "Vec.hxx"
+#include "TIA.hxx"
 
 /*
  * TODO list
@@ -37,18 +45,33 @@
  * ...
  */
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Dialog::Dialog(OSystem& instance, DialogContainer& parent,
-               int x, int y, int w, int h)
+Dialog::Dialog(OSystem& instance, DialogContainer& parent, const GUI::Font& font,
+               const string& title, int x, int y, int w, int h)
   : GuiObject(instance, parent, *this, x, y, w, h),
+    _font(font),
     _mouseWidget(nullptr),
     _focusedWidget(nullptr),
     _dragWidget(nullptr),
+    _defaultWidget(nullptr),
     _okWidget(nullptr),
     _cancelWidget(nullptr),
     _visible(false),
+    _onTop(true),
     _processCancel(false),
+    _title(title),
+    _th(0),
     _surface(nullptr),
-    _tabID(0)
+    _tabID(0),
+    _flags(WIDGET_ENABLED | WIDGET_BORDER | WIDGET_CLEARBG)
+{
+  setTitle(title);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Dialog::Dialog(OSystem& instance, DialogContainer& parent,
+               int x, int y, int w, int h)
+  : Dialog(instance, parent, instance.frameBuffer().font(), "", x, y, w, h)
 {
 }
 
@@ -65,7 +88,7 @@ Dialog::~Dialog()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Dialog::open(bool refresh)
+void Dialog::open()
 {
   // Make sure we have a valid surface to draw into
   // Technically, this shouldn't be needed until drawDialog(), but some
@@ -82,14 +105,16 @@ void Dialog::open(bool refresh)
   buildCurrentFocusList();
 
   _visible = true;
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Dialog::close(bool refresh)
+void Dialog::close()
 {
   if (_mouseWidget)
   {
-    _mouseWidget->handleMouseLeft(0);
+    _mouseWidget->handleMouseLeft();
     _mouseWidget = nullptr;
   }
 
@@ -98,18 +123,52 @@ void Dialog::close(bool refresh)
   _visible = false;
 
   parent().removeDialog();
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Dialog::setTitle(const string& title)
+{
+  _title = title;
+  _h -= _th;
+  if(title.empty())
+    _th = 0;
+  else
+    _th = _font.getLineHeight() + 4;
+  _h += _th;
+
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Dialog::center()
 {
-  if(_surface)
+  const GUI::Size& screen = instance().frameBuffer().screenSize();
+  const GUI::Rect& dst = _surface->dstRect();
+  _surface->setDstPos((screen.w - dst.width()) >> 1, (screen.h - dst.height()) >> 1);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+bool Dialog::render()
+{
+  if(!_dirty || !isVisible())
+    return false;
+
+  // Draw this dialog
+  center();
+  drawDialog();
+
+  // Update dialog surface; also render any extra surfaces
+  // Extra surfaces must be rendered afterwards, so they are drawn on top
+  if(_surface->render())
   {
-    const GUI::Size& screen = instance().frameBuffer().screenSize();
-    uInt32 x = (screen.w - getWidth()) >> 1;
-    uInt32 y = (screen.h - getHeight()) >> 1;
-    _surface->setDstPos(x, y);
+    mySurfaceStack.applyAll([](shared_ptr<FBSurface>& surface){
+      surface->render();
+    });
   }
+  _dirty = false;
+
+  return true;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -267,50 +326,45 @@ void Dialog::drawDialog()
 
   FBSurface& s = surface();
 
-  if(_dirty)
+  // Dialog is still on top if e.g a ContextMenu is opened
+  _onTop = parent().myDialogStack.top() == this
+    || (parent().myDialogStack.get(parent().myDialogStack.size() - 2) == this
+    && !parent().myDialogStack.top()->hasTitle());
+
+  if(_flags & WIDGET_CLEARBG)
   {
-//    cerr << "Dialog::drawDialog(): w = " << _w << ", h = " << _h << " @ " << &s << endl << endl;
-    s.fillRect(_x, _y, _w, _h, kDlgColor);
-#ifndef FLAT_UI
-    s.box(_x, _y, _w, _h, kColor, kShadowColor);
-#else
-    s.frameRect(_x, _y, _w, _h, kColor);
-#endif // !FLAT_UI
-
-    // Make all child widget dirty
-    Widget* w = _firstWidget;
-    Widget::setDirtyInChain(w);
-
-    // Draw all children
-    w = _firstWidget;
-    while(w)
+    //    cerr << "Dialog::drawDialog(): w = " << _w << ", h = " << _h << " @ " << &s << endl << endl;
+    s.fillRect(_x, _y + _th, _w, _h - _th, _onTop ? kDlgColor : kBGColorLo);
+    if(_th)
     {
-      w->draw();
-      w = w->_next;
+      s.fillRect(_x, _y, _w, _th, _onTop ? kColorTitleBar : kColorTitleBarLo);
+      s.drawString(_font, _title, _x + 10, _y + 2 + 1, _font.getStringWidth(_title),
+                   _onTop ? kColorTitleText : kColorTitleTextLo);
     }
-
-    // Draw outlines for focused widgets
-    // Don't change focus, since this will trigger lost and received
-    // focus events
-    if(_focusedWidget)
-      _focusedWidget = Widget::setFocusForChain(this, getFocusList(),
-                          _focusedWidget, 0, false);
-
-    // Tell the surface(s) this area is dirty
-    s.setDirty();
-
-    _dirty = false;
   }
+  else
+    s.invalidate();
+  if(_flags & WIDGET_BORDER) // currently only used by Dialog itself
+    s.frameRect(_x, _y, _w, _h, _onTop ? kColor : kShadowColor);
 
-  // Commit surface changes to screen; also render any extra surfaces
-  // Extra surfaces must be rendered afterwards, so they are drawn on top
-  if(s.render())
+  // Make all child widget dirty
+  Widget* w = _firstWidget;
+  Widget::setDirtyInChain(w);
+
+  // Draw all children
+  w = _firstWidget;
+  while(w)
   {
-    mySurfaceStack.applyAll([](shared_ptr<FBSurface>& surface){
-      surface->setDirty();
-      surface->render();
-    });
+    w->draw();
+    w = w->_next;
   }
+
+  // Draw outlines for focused widgets
+  // Don't change focus, since this will trigger lost and received
+  // focus events
+  if(_focusedWidget)
+    _focusedWidget = Widget::setFocusForChain(this, getFocusList(),
+                        _focusedWidget, 0, false);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -334,18 +388,18 @@ void Dialog::handleKeyDown(StellaKey key, StellaMod mod)
   // Detect selection of previous and next tab headers and objects
   if(key == KBDK_TAB)
   {
-    if(instance().eventHandler().kbdControl(mod))
+    if(StellaModTest::isControl(mod))
     {
       // tab header navigation
-      if(instance().eventHandler().kbdShift(mod) && cycleTab(-1))
+      if(StellaModTest::isShift(mod) && cycleTab(-1))
         return;
-      else if(!instance().eventHandler().kbdShift(mod) && cycleTab(+1))
+      else if(!StellaModTest::isShift(mod) && cycleTab(+1))
         return;
     }
     else
     {
       // object navigation
-      if(instance().eventHandler().kbdShift(mod))
+      if(StellaModTest::isShift(mod))
         e = Event::UINavPrev;
       else
         e = Event::UINavNext;
@@ -377,7 +431,7 @@ void Dialog::handleKeyUp(StellaKey key, StellaMod mod)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Dialog::handleMouseDown(int x, int y, int button, int clickCount)
+void Dialog::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   Widget* w = findWidget(x, y);
 
@@ -386,11 +440,11 @@ void Dialog::handleMouseDown(int x, int y, int button, int clickCount)
 
   if(w)
     w->handleMouseDown(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y),
-                       button, clickCount);
+                       b, clickCount);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Dialog::handleMouseUp(int x, int y, int button, int clickCount)
+void Dialog::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   if(_focusedWidget)
   {
@@ -402,7 +456,7 @@ void Dialog::handleMouseUp(int x, int y, int button, int clickCount)
   Widget* w = _dragWidget;
   if(w)
     w->handleMouseUp(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y),
-                     button, clickCount);
+                     b, clickCount);
 
   _dragWidget = nullptr;
 }
@@ -422,7 +476,7 @@ void Dialog::handleMouseWheel(int x, int y, int direction)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Dialog::handleMouseMoved(int x, int y, int button)
+void Dialog::handleMouseMoved(int x, int y)
 {
   Widget* w;
 
@@ -438,17 +492,17 @@ void Dialog::handleMouseMoved(int x, int y, int button)
     if(mouseInFocusedWidget && _mouseWidget != w)
     {
       if(_mouseWidget)
-        _mouseWidget->handleMouseLeft(button);
+        _mouseWidget->handleMouseLeft();
       _mouseWidget = w;
-      w->handleMouseEntered(button);
+      w->handleMouseEntered();
     }
     else if (!mouseInFocusedWidget && _mouseWidget == w)
     {
       _mouseWidget = nullptr;
-      w->handleMouseLeft(button);
+      w->handleMouseLeft();
     }
 
-    w->handleMouseMoved(x - wx, y - wy, button);
+    w->handleMouseMoved(x - wx, y - wy);
   }
 
   // While a "drag" is in process (i.e. mouse is moved while a button is pressed),
@@ -461,24 +515,24 @@ void Dialog::handleMouseMoved(int x, int y, int button)
   if (_mouseWidget != w)
   {
     if (_mouseWidget)
-      _mouseWidget->handleMouseLeft(button);
+      _mouseWidget->handleMouseLeft();
     if (w)
-      w->handleMouseEntered(button);
+      w->handleMouseEntered();
     _mouseWidget = w;
   }
 
   if (w && (w->getFlags() & WIDGET_TRACK_MOUSE))
-    w->handleMouseMoved(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y), button);
+    w->handleMouseMoved(x - (w->getAbsX() - _x), y - (w->getAbsY() - _y));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool Dialog::handleMouseClicks(int x, int y, int button)
+bool Dialog::handleMouseClicks(int x, int y, MouseButton b)
 {
   Widget* w = findWidget(x, y);
 
   if(w)
     return w->handleMouseClicks(x - (w->getAbsX() - _x),
-                                y - (w->getAbsY() - _y), button);
+                                y - (w->getAbsY() - _y), b);
   else
     return false;
 }
@@ -659,23 +713,28 @@ Widget* Dialog::findWidget(int x, int y) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Dialog::addOKCancelBGroup(WidgetArray& wid, const GUI::Font& font,
                                const string& okText, const string& cancelText,
-                               bool focusOKButton)
+                               bool focusOKButton, int buttonWidth)
 {
-  int buttonWidth = std::max(font.getStringWidth("Cancel"),
-                    std::max(font.getStringWidth(okText),
-                    font.getStringWidth(okText))) + 15;
+  const int HBORDER = 10;
+  const int VBORDER = 10;
+  const int BTN_BORDER = 20;
+  const int BUTTON_GAP = 8;
+  buttonWidth = std::max(buttonWidth,
+                         std::max(font.getStringWidth("Defaults"),
+                         std::max(font.getStringWidth(okText),
+                         font.getStringWidth(cancelText))) + BTN_BORDER);
   int buttonHeight = font.getLineHeight() + 4;
 
 #ifndef BSPF_MAC_OSX
-  addOKWidget(new ButtonWidget(this, font, _w - 2 * (buttonWidth + 7),
-      _h - buttonHeight - 10, buttonWidth, buttonHeight, okText, GuiObject::kOKCmd));
-  addCancelWidget(new ButtonWidget(this, font, _w - (buttonWidth + 10),
-      _h - buttonHeight - 10, buttonWidth, buttonHeight, cancelText, GuiObject::kCloseCmd));
+  addOKWidget(new ButtonWidget(this, font, _w - 2 * buttonWidth - HBORDER - BUTTON_GAP,
+      _h - buttonHeight - VBORDER, buttonWidth, buttonHeight, okText, GuiObject::kOKCmd));
+  addCancelWidget(new ButtonWidget(this, font, _w - (buttonWidth + HBORDER),
+      _h - buttonHeight - VBORDER, buttonWidth, buttonHeight, cancelText, GuiObject::kCloseCmd));
 #else
-  addCancelWidget(new ButtonWidget(this, font, _w - 2 * (buttonWidth + 7),
-      _h - buttonHeight - 10, buttonWidth, buttonHeight, cancelText, GuiObject::kCloseCmd));
-  addOKWidget(new ButtonWidget(this, font, _w - (buttonWidth + 10),
-      _h - buttonHeight - 10, buttonWidth, buttonHeight, okText, GuiObject::kOKCmd));
+  addCancelWidget(new ButtonWidget(this, font, _w - 2 * buttonWidth - HBORDER - BUTTON_GAP,
+      _h - buttonHeight - VBORDER, buttonWidth, buttonHeight, cancelText, GuiObject::kCloseCmd));
+  addOKWidget(new ButtonWidget(this, font, _w - (buttonWidth + HBORDER),
+      _h - buttonHeight - VBORDER, buttonWidth, buttonHeight, okText, GuiObject::kOKCmd));
 #endif
 
   // Note that 'focusOKButton' only takes effect when there are no other UI
@@ -692,6 +751,25 @@ void Dialog::addOKCancelBGroup(WidgetArray& wid, const GUI::Font& font,
     wid.push_back(_cancelWidget);
     wid.push_back(_okWidget);
   }
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Dialog::addDefaultsOKCancelBGroup(WidgetArray& wid, const GUI::Font& font,
+                                       const string& okText, const string& cancelText,
+                                       const string& defaultsText,
+                                       bool focusOKButton)
+{
+  const int HBORDER = 10;
+  const int VBORDER = 10;
+  const int BTN_BORDER = 20;
+  int buttonWidth = font.getStringWidth(defaultsText) + BTN_BORDER;
+  int buttonHeight = font.getLineHeight() + 4;
+
+  addDefaultWidget(new ButtonWidget(this, font, HBORDER, _h - buttonHeight - VBORDER,
+                   buttonWidth, buttonHeight, defaultsText, GuiObject::kDefaultsCmd));
+  wid.push_back(_defaultWidget);
+
+  addOKCancelBGroup(wid, font, okText, cancelText, focusOKButton, buttonWidth);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -720,19 +798,20 @@ Widget* Dialog::TabFocus::getNewFocus()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool Dialog::getResizableBounds(uInt32& w, uInt32& h) const
+bool Dialog::getDynamicBounds(uInt32& w, uInt32& h) const
 {
   const GUI::Rect& r = instance().frameBuffer().imageRect();
+
   if(r.width() <= FrameBuffer::kFBMinW || r.height() <= FrameBuffer::kFBMinH)
   {
-    w = uInt32(0.8 * FrameBuffer::kTIAMinW) * 2;
-    h = FrameBuffer::kTIAMinH * 2;
+    w = r.width();
+    h = r.height();
     return false;
   }
   else
   {
-    w = std::max(uInt32(0.8 * r.width()), uInt32(FrameBuffer::kFBMinW));
-    h = std::max(uInt32(0.8 * r.height()), uInt32(FrameBuffer::kFBMinH));
+    w = uInt32(0.95 * r.width());
+    h = uInt32(0.95 * r.height());
     return true;
   }
 }

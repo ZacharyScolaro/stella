@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -18,6 +18,9 @@
 #include <cstdio>
 
 #include "System.hxx"
+
+#include "Settings.hxx"
+
 #include "MT24LC256.hxx"
 
 #define DEBUG_EEPROM 0
@@ -85,6 +88,8 @@ MT24LC256::MT24LC256(const string& filename, const System& system)
 
   // Then initialize the I2C state
   jpee_init();
+
+  systemReset();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -146,10 +151,7 @@ void MT24LC256::update()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MT24LC256::systemReset()
 {
-  myCyclesWhenSDASet = myCyclesWhenSCLSet = myCyclesWhenTimerSet =
-    mySystem.cycles();
-
-  memset(myPageHit, false, sizeof(myPageHit));
+  std::fill(myPageHit, myPageHit + PAGE_NUM, false);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -162,7 +164,7 @@ void MT24LC256::eraseAll()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void MT24LC256::eraseCurrent()
 {
-  for(uInt32 page = 0; page < PAGE_NUM; page++)
+  for(uInt32 page = 0; page < PAGE_NUM; ++page)
   {
     if(myPageHit[page])
     {
@@ -250,6 +252,9 @@ void MT24LC256::jpee_data_stop()
     {
       myDataChanged = true;
       myPageHit[jpee_address / PAGE_SIZE] = true;
+      bool devSettings = mySystem.oSystem().settings().getBool("dev.settings");
+      if(mySystem.oSystem().settings().getBool(devSettings ? "dev.eepromaccess" : "plr.eepromaccess"))
+        mySystem.oSystem().frameBuffer().showMessage("AtariVox/SaveKey EEPROM write");
       myData[(jpee_address++) & jpee_sizemask] = jpee_packet[i];
       if (!(jpee_address & jpee_pagemask))
         break;  /* Writes can't cross page boundary! */
@@ -347,6 +352,12 @@ void MT24LC256::jpee_clock_fall()
       }
       jpee_state=3;
       myPageHit[jpee_address / PAGE_SIZE] = true;
+
+      {
+        bool devSettings = mySystem.oSystem().settings().getBool("dev.settings");
+        if(mySystem.oSystem().settings().getBool(devSettings ? "dev.eepromaccess" : "plr.eepromaccess"))
+          mySystem.oSystem().frameBuffer().showMessage("AtariVox/SaveKey EEPROM read");
+      }
       jpee_nb = (myData[jpee_address & jpee_sizemask] << 1) | 1;  /* Fall through */
       JPEE_LOG2("I2C_READ(%04X=%02X)",jpee_address,jpee_nb/2);
       [[fallthrough]];
@@ -358,7 +369,7 @@ void MT24LC256::jpee_clock_fall()
       {
         jpee_state = 4;
         jpee_sdat = 1;
-        jpee_address++;
+        ++jpee_address;
       }
       break;
 
@@ -387,8 +398,8 @@ bool MT24LC256::jpee_timercheck(int mode)
   {
     if(myTimerActive)
     {
-      uInt32 elapsed = uInt32(mySystem.cycles() - myCyclesWhenTimerSet);
-      myTimerActive = elapsed < uInt32(5000000.0 / 838.0);
+      uInt64 elapsed = mySystem.cycles() - myCyclesWhenTimerSet;
+      myTimerActive = elapsed < uInt64(5000000.0 / 838.0);
     }
     return myTimerActive;
   }

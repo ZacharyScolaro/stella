@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -367,8 +367,6 @@ bool Cartridge4A50::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     // The 32K bytes of RAM
     out.putByteArray(myRAM, 32768);
 
@@ -400,9 +398,6 @@ bool Cartridge4A50::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     in.getByteArray(myRAM, 32768);
 
     // Index pointers

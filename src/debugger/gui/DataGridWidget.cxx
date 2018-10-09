@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -25,6 +25,7 @@
 #include "DataGridOpsWidget.hxx"
 #include "RamWidget.hxx"
 #include "ScrollBarWidget.hxx"
+#include "StellaKeys.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 DataGridWidget::DataGridWidget(GuiObject* boss, const GUI::Font& font,
@@ -49,8 +50,7 @@ DataGridWidget::DataGridWidget(GuiObject* boss, const GUI::Font& font,
     _opsWidget(nullptr),
     _scrollBar(nullptr)
 {
-  _flags = WIDGET_ENABLED | WIDGET_CLEARBG | WIDGET_RETAIN_FOCUS |
-           WIDGET_WANTS_RAWDATA;
+  _flags = WIDGET_ENABLED | WIDGET_RETAIN_FOCUS | WIDGET_WANTS_RAWDATA;
   _editMode = false;
 
   // The item is selected, thus _bgcolor is used to draw the caret and
@@ -250,7 +250,21 @@ void DataGridWidget::setRange(int lower, int upper)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DataGridWidget::handleMouseDown(int x, int y, int button, int clickCount)
+void DataGridWidget::handleMouseEntered()
+{
+  setFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void DataGridWidget::handleMouseLeft()
+{
+  clearFlags(WIDGET_HILITED);
+  setDirty();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void DataGridWidget::handleMouseDown(int x, int y, MouseButton b, int clickCount)
 {
   if (!isEnabled())
     return;
@@ -276,7 +290,7 @@ void DataGridWidget::handleMouseDown(int x, int y, int button, int clickCount)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void DataGridWidget::handleMouseUp(int x, int y, int button, int clickCount)
+void DataGridWidget::handleMouseUp(int x, int y, MouseButton b, int clickCount)
 {
   // If this was a double click and the mouse is still over the selected item,
   // send the double click command
@@ -331,8 +345,7 @@ bool DataGridWidget::handleText(char text)
 bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
 {
   // Ignore all mod keys
-  if(instance().eventHandler().kbdControl(mod) ||
-     instance().eventHandler().kbdAlt(mod))
+  if(StellaModTest::isControl(mod) || StellaModTest::isAlt(mod))
     return true;
 
   bool handled = true;
@@ -414,7 +427,7 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         break;
 
       case KBDK_PAGEUP:
-        if(instance().eventHandler().kbdShift(mod) && _scrollBar)
+        if(StellaModTest::isShift(mod) && _scrollBar)
           handleMouseWheel(0, 0, -1);
         else if (_currentRow > 0)
         {
@@ -424,7 +437,7 @@ bool DataGridWidget::handleKeyDown(StellaKey key, StellaMod mod)
         break;
 
       case KBDK_PAGEDOWN:
-        if(instance().eventHandler().kbdShift(mod) && _scrollBar)
+        if(StellaModTest::isShift(mod) && _scrollBar)
           handleMouseWheel(0, 0, +1);
         else if (_currentRow < int(_rows) - 1)
         {
@@ -580,27 +593,19 @@ void DataGridWidget::handleCommand(CommandSender* sender, int cmd,
 void DataGridWidget::drawWidget(bool hilite)
 {
   FBSurface& s = _boss->dialog().surface();
+  bool onTop = _boss->dialog().isOnTop();
   int row, col;
 
+  s.fillRect(_x, _y, _w, _h, hilite && isEnabled() && isEditable() ? _bgcolorhi : onTop ? _bgcolor : kBGColorHi);
   // Draw the internal grid and labels
   int linewidth = _cols * _colWidth;
-#ifndef FLAT_UI
-  for (row = 0; row <= _rows; row++)
-    s.hLine(_x, _y + (row * _rowHeight), _x + linewidth, kColor);
-  int lineheight = _rows * _rowHeight;
-  for (col = 0; col <= _cols; col++)
-    s.vLine(_x + (col * _colWidth), _y, _y + lineheight, kColor);
-#else
-  s.frameRect(_x, _y, _w, _h, kColor);
+  s.frameRect(_x, _y, _w, _h, hilite && isEnabled() && isEditable() ? kWidColorHi : kColor);
   for(row = 1; row <= _rows-1; row++)
     s.hLine(_x+1, _y + (row * _rowHeight), _x + linewidth-1, kBGColorLo);
 
   int lineheight = _rows * _rowHeight;
   for(col = 1; col <= _cols-1; col++)
     s.vLine(_x + (col * _colWidth), _y+1, _y + lineheight-1, kBGColorLo);
-#endif
-
-
 
   // Draw the list items
   for (row = 0; row < _rows; row++)
@@ -610,7 +615,7 @@ void DataGridWidget::drawWidget(bool hilite)
       int x = _x + 4 + (col * _colWidth);
       int y = _y + 2 + (row * _rowHeight);
       int pos = row*_cols + col;
-      uInt32 textColor = kTextColor;
+      ColorId textColor = onTop ? kTextColor : kColor;
 
       // Draw the selected item inverted, on a highlighted background.
       if (_currentRow == row && _currentCol == col &&
@@ -630,12 +635,13 @@ void DataGridWidget::drawWidget(bool hilite)
       {
         if(_changedList[pos])
         {
-          s.fillRect(x - 3, y - 1, _colWidth-1, _rowHeight-1, kDbgChangedColor);
+          s.fillRect(x - 3, y - 1, _colWidth-1, _rowHeight-1,
+                     onTop ? kDbgChangedColor : _bgcolorlo);
 
           if(_hiliteList[pos])
             textColor = kDbgColorHi;
           else
-            textColor = kDbgChangedTextColor;
+            textColor = onTop ? kDbgChangedTextColor : textColor;
         }
         else if(_hiliteList[pos])
           textColor = kDbgColorHi;

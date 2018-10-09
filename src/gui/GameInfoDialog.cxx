@@ -8,19 +8,20 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
 
-#include "BSType.hxx"
+#include "Bankswitch.hxx"
 #include "Console.hxx"
 #include "MouseControl.hxx"
 #include "SaveKey.hxx"
 #include "Dialog.hxx"
 #include "EditTextWidget.hxx"
+#include "RadioButtonWidget.hxx"
 #include "Launcher.hxx"
 #include "OSystem.hxx"
 #include "PopUpWidget.hxx"
@@ -31,219 +32,212 @@
 #include "Widget.hxx"
 #include "Font.hxx"
 
+#include "FrameBuffer.hxx"
+#include "TIASurface.hxx"
+#include "TIA.hxx"
+#include "Switches.hxx"
+
 #include "GameInfoDialog.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 GameInfoDialog::GameInfoDialog(
       OSystem& osystem, DialogContainer& parent, const GUI::Font& font,
       GuiObject* boss)
-  : Dialog(osystem, parent),
-    CommandSender(boss),
-    myPropertiesLoaded(false),
-    myDefaultsSelected(false)
+  : Dialog(osystem, parent, font, "Game properties"),
+    CommandSender(boss)
 {
   const GUI::Font& ifont = instance().frameBuffer().infoFont();
   const int lineHeight   = font.getLineHeight(),
             fontWidth    = font.getMaxCharWidth(),
             fontHeight   = font.getFontHeight(),
-            buttonWidth  = font.getStringWidth("Defaults") + 20,
             buttonHeight = font.getLineHeight() + 4;
-  const int vBorder = 4;
-  const int hBorder = 2;
+  const int VBORDER = 8;
+  const int HBORDER = 10;
+  const int VGAP = 4;
 
-  const int hSpace = 10;
-  const int vGap = 4;
-
-  int xpos, ypos, lwidth, fwidth, pwidth, tabID;
+  int xpos, ypos, lwidth, fwidth, pwidth, swidth, tabID;
   WidgetArray wid;
   VariantList items, ports, ctrls;
   StaticTextWidget* t;
 
   // Set real dimensions
-  _w = 52 * fontWidth + 8;
-  _h = 9 * (lineHeight + vGap) + vBorder * 2 + buttonHeight + fontHeight + ifont.getLineHeight() + 20;
+  _w = 53 * fontWidth + 8;
+  _h = 9 * (lineHeight + VGAP) + VBORDER * 2 + _th + buttonHeight + fontHeight + ifont.getLineHeight() + 20;
 
   // The tab widget
-  xpos = hBorder; ypos = vBorder;
-  myTab = new TabWidget(this, font, xpos, ypos, _w - 2 * hBorder,
-                        _h - (buttonHeight + fontHeight + ifont.getLineHeight() + 20));
+  myTab = new TabWidget(this, font, 2, 4 + _th, _w - 2 * 2,
+                        _h - (_th + buttonHeight + 20));
   addTabWidget(myTab);
 
+  //////////////////////////////////////////////////////////////////////////////
   // 1) Cartridge properties
   tabID = myTab->addTab("Cartridge");
 
-  xpos = hSpace;
+  xpos = HBORDER; ypos = VBORDER;
   lwidth = font.getStringWidth("Manufacturer ");
-  fwidth = _w - xpos - lwidth - hSpace - hBorder * 2;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Name", TextAlign::Left);
+  fwidth = _w - lwidth - HBORDER * 2 - 2;
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "Name");
   myName = new EditTextWidget(myTab, font, xpos+lwidth, ypos-1,
                               fwidth, lineHeight, "");
   wid.push_back(myName);
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "MD5", TextAlign::Left);
+  ypos += lineHeight + VGAP;
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "MD5");
   myMD5 = new EditTextWidget(myTab, font, xpos + lwidth, ypos-1,
                      fwidth, lineHeight, "");
   myMD5->setEditable(false);
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Manufacturer", TextAlign::Left);
+  ypos += lineHeight + VGAP;
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "Manufacturer");
   myManufacturer = new EditTextWidget(myTab, font, xpos+lwidth, ypos-1,
                                       fwidth, lineHeight, "");
   wid.push_back(myManufacturer);
 
-  ypos += lineHeight + vGap;
+  ypos += lineHeight + VGAP;
   new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
                        "Model", TextAlign::Left);
   myModelNo = new EditTextWidget(myTab, font, xpos+lwidth, ypos-1,
                                  fwidth, lineHeight, "");
   wid.push_back(myModelNo);
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Rarity", TextAlign::Left);
+  ypos += lineHeight + VGAP;
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "Rarity");
   myRarity = new EditTextWidget(myTab, font, xpos+lwidth, ypos-1,
                                 fwidth, lineHeight, "");
   wid.push_back(myRarity);
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Note", TextAlign::Left);
+  ypos += lineHeight + VGAP;
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "Note");
   myNote = new EditTextWidget(myTab, font, xpos+lwidth, ypos-1,
                               fwidth, lineHeight, "");
   wid.push_back(myNote);
+  ypos += lineHeight + VGAP;
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Sound", TextAlign::Left);
-  pwidth = font.getStringWidth("Stereo");
-  items.clear();
-  VarList::push_back(items, "Mono", "MONO");
-  VarList::push_back(items, "Stereo", "STEREO");
-  mySound = new PopUpWidget(myTab, font, xpos+lwidth, ypos,
-                            pwidth, lineHeight, items, "", 0, 0);
-  wid.push_back(mySound);
-
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Type", TextAlign::Left);
+  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight, "Type (*)");
   pwidth = font.getStringWidth("CM (SpectraVideo CompuMate)");
   items.clear();
-  for(int i = 0; i < int(BSType::NumSchemes); ++i)
-    VarList::push_back(items, BSList[i].desc, BSList[i].name);
+  for(uInt32 i = 0; i < uInt32(Bankswitch::Type::NumSchemes); ++i)
+    VarList::push_back(items, Bankswitch::BSList[i].desc, Bankswitch::BSList[i].name);
   myType = new PopUpWidget(myTab, font, xpos+lwidth, ypos,
-                           pwidth, lineHeight, items, "", 0, 0);
+                           pwidth, lineHeight, items, "");
   wid.push_back(myType);
+  ypos += lineHeight + VGAP;
+
+  myTypeDetected = new StaticTextWidget(myTab, ifont, xpos+lwidth, ypos,
+                       "(CM (SpectraVideo CompuMate) detected)");
+  wid.push_back(myTypeDetected);
+  ypos += ifont.getLineHeight() + VGAP/2;
+
+  mySound = new CheckboxWidget(myTab, font, xpos, ypos + 1, "Stereo sound");
+  wid.push_back(mySound);
+
+  // Add message concerning usage
+  ypos = myTab->getHeight() - 5 - fontHeight - ifont.getFontHeight() - 10;
+  new StaticTextWidget(myTab, ifont, xpos, ypos,
+                       "(*) Changes require a ROM reload");
 
   // Add items for tab 0
   addToFocusList(wid, myTab, tabID);
 
-
+  //////////////////////////////////////////////////////////////////////////////
   // 2) Console properties
   wid.clear();
   tabID = myTab->addTab("Console");
 
-  xpos = hSpace; ypos = vBorder;
-  lwidth = font.getStringWidth("Right Difficulty ");
-  pwidth = font.getStringWidth("B & W");
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Left Difficulty", TextAlign::Left);
-  items.clear();
-  VarList::push_back(items, "B", "B");
-  VarList::push_back(items, "A", "A");
-  myLeftDiff = new PopUpWidget(myTab, font, xpos+lwidth, ypos,
-                               pwidth, lineHeight, items, "", 0, 0);
-  wid.push_back(myLeftDiff);
+  xpos = HBORDER; ypos = VBORDER;
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "Right Difficulty", TextAlign::Left);
-  // ... use same items as above
-  myRightDiff = new PopUpWidget(myTab, font, xpos+lwidth, ypos,
-                                pwidth, lineHeight, items, "", 0, 0);
-  wid.push_back(myRightDiff);
+  StaticTextWidget* s = new StaticTextWidget(myTab, font, xpos, ypos + 1, "TV type          ");
+  myTVTypeGroup = new RadioButtonGroup();
+  RadioButtonWidget* r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                            "Color", myTVTypeGroup);
+  wid.push_back(r);
+  ypos += lineHeight;
+  r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                            "B/W", myTVTypeGroup);
+  wid.push_back(r);
+  ypos += lineHeight + VGAP * 2;
 
-  ypos += lineHeight + vGap;
-  new StaticTextWidget(myTab, font, xpos, ypos+1, lwidth, fontHeight,
-                       "TV Type", TextAlign::Left);
-  items.clear();
-  VarList::push_back(items, "Color", "COLOR");
-  VarList::push_back(items, "B & W", "BW");
-  myTVType = new PopUpWidget(myTab, font, xpos+lwidth, ypos,
-                             pwidth, lineHeight, items, "", 0, 0);
-  wid.push_back(myTVType);
+  s = new StaticTextWidget(myTab, font, xpos, ypos+1, "Left difficulty  ");
+  myLeftDiffGroup = new RadioButtonGroup();
+  r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                                               "A", myLeftDiffGroup);
+  wid.push_back(r);
+  ypos += lineHeight;
+  r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                            "B", myLeftDiffGroup);
+  wid.push_back(r);
+  ypos += lineHeight + VGAP * 2;
+
+  s = new StaticTextWidget(myTab, font, xpos, ypos+1, "Right difficulty ");
+  myRightDiffGroup = new RadioButtonGroup();
+  r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                            "A", myRightDiffGroup);
+  wid.push_back(r);
+  ypos += lineHeight;
+  r = new RadioButtonWidget(myTab, font, s->getRight(), ypos + 1,
+                            "B", myRightDiffGroup);
+  wid.push_back(r);
 
   // Add items for tab 1
   addToFocusList(wid, myTab, tabID);
 
-
+  //////////////////////////////////////////////////////////////////////////////
   // 3) Controller properties
   wid.clear();
   tabID = myTab->addTab("Controller");
 
-  ypos = vBorder;
-  pwidth = font.getStringWidth("Paddles_IAxis");
-  myP0Label = new StaticTextWidget(myTab, font, hSpace, ypos+1,
-      "P0 Controller ", TextAlign::Left);
   ctrls.clear();
-  VarList::push_back(ctrls, "Joystick",      "JOYSTICK"     );
-  VarList::push_back(ctrls, "Paddles",       "PADDLES"      );
+  VarList::push_back(ctrls, "Joystick", "JOYSTICK");
+  VarList::push_back(ctrls, "Paddles", "PADDLES");
   VarList::push_back(ctrls, "Paddles_IAxis", "PADDLES_IAXIS");
-  VarList::push_back(ctrls, "Paddles_IDir",  "PADDLES_IDIR" );
+  VarList::push_back(ctrls, "Paddles_IDir", "PADDLES_IDIR");
   VarList::push_back(ctrls, "Paddles_IAxDr", "PADDLES_IAXDR");
-  VarList::push_back(ctrls, "BoosterGrip",   "BOOSTERGRIP"  );
-  VarList::push_back(ctrls, "Driving",       "DRIVING"      );
-  VarList::push_back(ctrls, "Keyboard",      "KEYBOARD"     );
-  VarList::push_back(ctrls, "AmigaMouse",    "AMIGAMOUSE"   );
-  VarList::push_back(ctrls, "AtariMouse",    "ATARIMOUSE"   );
-  VarList::push_back(ctrls, "Trakball",      "TRAKBALL"     );
-  VarList::push_back(ctrls, "AtariVox",      "ATARIVOX"     );
-  VarList::push_back(ctrls, "SaveKey",       "SAVEKEY"      );
-  VarList::push_back(ctrls, "Sega Genesis",  "GENESIS"      );
-//  VarList::push_back(ctrls, "KidVid",        "KIDVID"      );
-  VarList::push_back(ctrls, "MindLink",      "MINDLINK"     );
+  VarList::push_back(ctrls, "BoosterGrip", "BOOSTERGRIP");
+  VarList::push_back(ctrls, "Driving", "DRIVING");
+  VarList::push_back(ctrls, "Keyboard", "KEYBOARD");
+  VarList::push_back(ctrls, "AmigaMouse", "AMIGAMOUSE");
+  VarList::push_back(ctrls, "AtariMouse", "ATARIMOUSE");
+  VarList::push_back(ctrls, "Trakball", "TRAKBALL");
+  VarList::push_back(ctrls, "AtariVox", "ATARIVOX");
+  VarList::push_back(ctrls, "SaveKey", "SAVEKEY");
+  VarList::push_back(ctrls, "Sega Genesis", "GENESIS");
+  //  VarList::push_back(ctrls, "KidVid",        "KIDVID"      );
+  VarList::push_back(ctrls, "MindLink", "MINDLINK");
 
+  ypos = VBORDER;
+  pwidth = font.getStringWidth("Paddles_IAxis");
+  myP0Label = new StaticTextWidget(myTab, font, HBORDER, ypos+1, "P0 controller    ");
   myP0Controller = new PopUpWidget(myTab, font, myP0Label->getRight(), myP0Label->getTop()-1,
                                    pwidth, lineHeight, ctrls, "", 0, kLeftCChanged);
   wid.push_back(myP0Controller);
 
-  ypos += lineHeight + vGap;
-  pwidth = font.getStringWidth("Paddles_IAxis");
-  myP1Label = new StaticTextWidget(myTab, font, hSpace, ypos+1,
-      "P1 Controller ", TextAlign::Left);
+  ypos += lineHeight + VGAP;
+  myP1Label = new StaticTextWidget(myTab, font, HBORDER, ypos+1, "P1 controller    ");
   myP1Controller = new PopUpWidget(myTab, font, myP1Label->getRight(), myP1Label->getTop()-1,
                                    pwidth, lineHeight, ctrls, "", 0, kRightCChanged);
   wid.push_back(myP1Controller);
 
-  //ypos += lineHeight + vGap;
-  mySwapPorts = new CheckboxWidget(myTab, font, myP0Controller->getRight() + fontWidth*5, myP0Controller->getTop()+1,
-                                   "Swap Ports");
+  //ypos += lineHeight + VGAP;
+  mySwapPorts = new CheckboxWidget(myTab, font, myP0Controller->getRight() + fontWidth*4, myP0Controller->getTop()+1,
+                                   "Swap ports");
   wid.push_back(mySwapPorts);
-  //ypos += lineHeight + vGap;
-  mySwapPaddles = new CheckboxWidget(myTab, font, myP1Controller->getRight() + fontWidth*5, myP1Controller->getTop()+1,
-                                     "Swap Paddles");
+  //ypos += lineHeight + VGAP;
+  mySwapPaddles = new CheckboxWidget(myTab, font, myP1Controller->getRight() + fontWidth*4, myP1Controller->getTop()+1,
+                                     "Swap paddles");
   wid.push_back(mySwapPaddles);
 
-  // EEPROM erase button for P0
-  ypos += lineHeight + vGap + 4;
-  myEraseEEPROMLabel = new StaticTextWidget(myTab, font, hSpace, ypos, "AtariVox/SaveKey ");
+  // EEPROM erase button for P0/P1
+  ypos += lineHeight + VGAP + 4;
+  pwidth = myP1Controller->getWidth();   //font.getStringWidth("Erase EEPROM ") + 23;
+  myEraseEEPROMLabel = new StaticTextWidget(myTab, font, HBORDER, ypos, "AtariVox/SaveKey ");
   myEraseEEPROMButton = new ButtonWidget(myTab, font, myEraseEEPROMLabel->getRight(), ypos - 4,
-                                           "Erase EEPROM", kEEButtonPressed);
-  myEraseEEPROMInfo = new StaticTextWidget(myTab, ifont, myEraseEEPROMButton->getRight() + 4, myEraseEEPROMLabel->getTop() + 3,
-                                           "(for this game only)");
+                                         pwidth, buttonHeight, "Erase EEPROM", kEEButtonPressed);
+  wid.push_back(myEraseEEPROMButton);
+  myEraseEEPROMInfo = new StaticTextWidget(myTab, ifont, myEraseEEPROMButton->getRight() + 4,
+                                           myEraseEEPROMLabel->getTop() + 3, "(for this game only)");
 
-  ypos += lineHeight + vGap * 4;
-  lwidth = font.getStringWidth("Mouse axis mode  ");
-  pwidth = font.getStringWidth("Specific axis");
-  items.clear();
-  VarList::push_back(items, "Automatic", "AUTO");
-  VarList::push_back(items, "Specific axis", "specific");
-  myMouseControl =
-    new PopUpWidget(myTab, font, hSpace, ypos, pwidth, lineHeight, items,
-                   "Mouse axis mode  ", lwidth, kMCtrlChanged);
+  ypos += lineHeight + VGAP * 4;
+  myMouseControl = new CheckboxWidget(myTab, font, xpos, ypos + 1, "Specific mouse axes", kMCtrlChanged);
   wid.push_back(myMouseControl);
 
   // Mouse controller specific axis
@@ -259,41 +253,40 @@ GameInfoDialog::GameInfoDialog(
   VarList::push_back(items, "MindLink 0", MouseControl::MindLink0);
   VarList::push_back(items, "MindLink 1", MouseControl::MindLink1);
 
-  xpos = hSpace + lwidth;
-  lwidth = font.getStringWidth("X-Axis is ");
-  xpos -= lwidth;
-  ypos += lineHeight + vGap;
+  xpos += 20;
+  ypos += lineHeight + VGAP;
   myMouseX = new PopUpWidget(myTab, font, xpos, ypos, pwidth, lineHeight, items,
                "X-Axis is ");
   wid.push_back(myMouseX);
 
-  ypos += lineHeight + vGap;
+  ypos += lineHeight + VGAP;
   myMouseY = new PopUpWidget(myTab, font, myMouseX->getLeft(), ypos, pwidth, lineHeight, items,
                "Y-Axis is ");
   wid.push_back(myMouseY);
 
-  xpos = hSpace;  ypos += lineHeight + vGap;
-  lwidth = font.getStringWidth("Mouse axis range ");
-  myMouseRange = new SliderWidget(myTab, font, hSpace, ypos, 8*fontWidth, lineHeight,
-                                  "Mouse axis range ", lwidth, kMRangeChanged);
+  xpos = HBORDER; ypos += lineHeight + VGAP;
+  myMouseRange = new SliderWidget(myTab, font, HBORDER, ypos,
+                                  "Mouse axes range ", 0, 0, fontWidth * 4, "%");
   myMouseRange->setMinValue(1); myMouseRange->setMaxValue(100);
+  myMouseRange->setTickmarkInterval(4);
   wid.push_back(myMouseRange);
 
-  myMouseRangeLabel = new StaticTextWidget(myTab, font,
-                            myMouseRange->getRight() + 4, myMouseRange->getTop()+1,
-                            "   ", TextAlign::Left);
+  // Add message concerning usage
+  ypos = myTab->getHeight() - 5 - fontHeight - ifont.getFontHeight() - 10;
+  new StaticTextWidget(myTab, ifont, xpos, ypos,
+                       "(*) Changes to properties require a ROM reload");
 
   // Add items for tab 2
   addToFocusList(wid, myTab, tabID);
 
-
+  //////////////////////////////////////////////////////////////////////////////
   // 4) Display properties
   wid.clear();
   tabID = myTab->addTab("Display");
 
-  ypos = vBorder;
+  ypos = VBORDER;
   pwidth = font.getStringWidth("Auto-detect");
-  t = new StaticTextWidget(myTab, font, hSpace, ypos+1, "Format ", TextAlign::Left);
+  t = new StaticTextWidget(myTab, font, HBORDER, ypos+1, "Format  ");
   items.clear();
   VarList::push_back(items, "Auto-detect", "AUTO");
   VarList::push_back(items, "NTSC",    "NTSC");
@@ -306,134 +299,137 @@ GameInfoDialog::GameInfoDialog(
                              pwidth, lineHeight, items, "", 0, 0);
   wid.push_back(myFormat);
 
-  ypos += lineHeight + vGap;
-  t = new StaticTextWidget(myTab, font, hSpace, ypos+1, "YStart ", TextAlign::Left);
-  myYStart = new SliderWidget(myTab, font, t->getRight(), ypos, 8*fontWidth, lineHeight,
-                              "", 0, kYStartChanged);
-  myYStart->setMinValue(TIAConstants::minYStart-1);
-  myYStart->setMaxValue(TIAConstants::maxYStart);
-  wid.push_back(myYStart);
-  myYStartLabel = new StaticTextWidget(myTab, font, myYStart->getRight() + 4,
-                                       ypos+1, 5*fontWidth, fontHeight, "", TextAlign::Left);
+  myFormatDetected = new StaticTextWidget(myTab, ifont, myFormat->getRight() + 8, ypos + 4, "SECAM60 detected");
+  wid.push_back(myFormatDetected);
 
-  ypos += lineHeight + vGap;
-  t = new StaticTextWidget(myTab, font, hSpace, ypos+1, "Height ", TextAlign::Left);
-  myHeight = new SliderWidget(myTab, font, t->getRight(), ypos, 8*fontWidth, lineHeight,
-                              "", 0, kHeightChanged);
+  ypos += lineHeight + VGAP;
+  swidth = myFormat->getWidth();
+  t = new StaticTextWidget(myTab, font, HBORDER, ypos+2, "Y-start ");
+  myYStart = new SliderWidget(myTab, font, t->getRight(), ypos, swidth, lineHeight,
+                              "   ", 0, kYStartChanged, 5 * fontWidth, "px");
+  myYStart->setMinValue(0);
+  myYStart->setMaxValue(TIAConstants::maxYStart);
+  // one tickmark every ~10 pixel
+  myYStart->setTickmarkInterval((TIAConstants::maxYStart + 5) / 10);
+  wid.push_back(myYStart);
+
+  int iWidth = ifont.getCharWidth('2');
+  myYStartDetected = new StaticTextWidget(myTab, ifont, myYStart->getRight() + 8 + iWidth, ypos + 5, "100px detected");
+  wid.push_back(myYStartDetected);
+
+  ypos += lineHeight + VGAP;
+  t = new StaticTextWidget(myTab, font, HBORDER, ypos+2, "Height  ");
+  myHeight = new SliderWidget(myTab, font, t->getRight(), ypos, swidth, lineHeight,
+                              "   ", 0, kHeightChanged, 5 * fontWidth, "px");
   myHeight->setMinValue(TIAConstants::minViewableHeight-1);
   myHeight->setMaxValue(TIAConstants::maxViewableHeight);
+  // one tickmark every ~10 pixel
+  myHeight->setTickmarkInterval((TIAConstants::maxViewableHeight - (TIAConstants::minViewableHeight - 1) + 5) / 10);
   wid.push_back(myHeight);
-  myHeightLabel = new StaticTextWidget(myTab, font, myHeight->getRight() + 4,
-                                       ypos+1, 5*fontWidth, fontHeight, "", TextAlign::Left);
+
+  myHeightDetected = new StaticTextWidget(myTab, ifont, myHeight->getRight() + 8, ypos + 5, "100px detected");
+  wid.push_back(myYStartDetected);
+
 
   // Phosphor
-  ypos += lineHeight + vGap*4;
-  myPhosphor = new CheckboxWidget(myTab, font, hSpace, ypos+1, "Use Phosphor", kPhosphorChanged);
+  ypos += lineHeight + VGAP*4;
+  myPhosphor = new CheckboxWidget(myTab, font, HBORDER, ypos+1, "Phosphor", kPhosphorChanged);
   wid.push_back(myPhosphor);
 
   myPPBlend = new SliderWidget(myTab, font,
-                               myPhosphor->getRight() + 16, myPhosphor->getTop()-2,
-                               8*fontWidth, lineHeight, "Blend ",
-                               font.getStringWidth("Blend "),
-                               kPPBlendChanged);
+                               myPhosphor->getRight() + fontWidth * 3, myPhosphor->getTop()-2,
+                               "Blend ", 0, kPPBlendChanged, 7 * fontWidth, "%");
   myPPBlend->setMinValue(0); myPPBlend->setMaxValue(100);
+  myPPBlend->setTickmarkInterval(2);
   wid.push_back(myPPBlend);
-
-  myPPBlendLabel = new StaticTextWidget(myTab, font,
-                                        myPPBlend->getRight() + 4, myPhosphor->getTop(),
-                                        5*fontWidth, fontHeight, "", TextAlign::Left);
 
   // Add items for tab 3
   addToFocusList(wid, myTab, tabID);
 
-
   // Activate the first tab
   myTab->setActiveTab(0);
 
-  // Add message concerning usage
-  lwidth = ifont.getStringWidth("(*) Changes to properties require a ROM reload");
-  new StaticTextWidget(this, ifont, hSpace, _h - (buttonHeight + fontHeight + 20),
-                       lwidth, fontHeight,
-                       "(*) Changes to properties require a ROM reload",
-                       TextAlign::Left);
-
   // Add Defaults, OK and Cancel buttons
   wid.clear();
-  ButtonWidget* b;
-  b = new ButtonWidget(this, font, 10, _h - buttonHeight - 10,
-                       buttonWidth, buttonHeight, "Defaults", GuiObject::kDefaultsCmd);
-  wid.push_back(b);
-  addOKCancelBGroup(wid, font);
+  addDefaultsOKCancelBGroup(wid, font);
   addBGroupToFocusList(wid);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::loadConfig()
 {
-  myPropertiesLoaded = false;
-  myDefaultsSelected = false;
-
   if(instance().hasConsole())
   {
     myGameProperties = instance().console().properties();
-    myPropertiesLoaded = true;
-    loadView();
   }
   else
   {
     const string& md5 = instance().launcher().selectedRomMD5();
-    if(md5 != "")
-    {
-      instance().propSet().getMD5(md5, myGameProperties);
-      myPropertiesLoaded = true;
-      loadView();
-    }
+    instance().propSet().getMD5(md5, myGameProperties);
   }
 
-  updateControllerStates();
+  loadCartridgeProperties(myGameProperties);
+  loadConsoleProperties(myGameProperties);
+  loadControllerProperties(myGameProperties);
+  loadDisplayProperties(myGameProperties);
+
+  myTab->loadConfig();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void GameInfoDialog::loadView()
+void GameInfoDialog::loadCartridgeProperties(const Properties& props)
 {
-  if(!myPropertiesLoaded)
-    return;
+  myName->setText(props.get(Cartridge_Name));
+  myMD5->setText(props.get(Cartridge_MD5));
+  myManufacturer->setText(props.get(Cartridge_Manufacturer));
+  myModelNo->setText(props.get(Cartridge_ModelNo));
+  myRarity->setText(props.get(Cartridge_Rarity));
+  myNote->setText(props.get(Cartridge_Note));
+  mySound->setState(props.get(Cartridge_Sound) == "STEREO");
+  myType->setSelected(props.get(Cartridge_Type), "AUTO");
 
-  // Cartridge properties
-  myName->setText(myGameProperties.get(Cartridge_Name));
-  myMD5->setText(myGameProperties.get(Cartridge_MD5));
-  myManufacturer->setText(myGameProperties.get(Cartridge_Manufacturer));
-  myModelNo->setText(myGameProperties.get(Cartridge_ModelNo));
-  myRarity->setText(myGameProperties.get(Cartridge_Rarity));
-  myNote->setText(myGameProperties.get(Cartridge_Note));
-  mySound->setSelected(myGameProperties.get(Cartridge_Sound), "MONO");
-  myType->setSelected(myGameProperties.get(Cartridge_Type), "AUTO");
+  if(instance().hasConsole() && myType->getSelectedTag().toString() == "AUTO")
+  {
+    string bs = instance().console().about().BankSwitch;
+    size_t pos = bs.find_first_of('*');
+    // remove '*':
+    if (pos != string::npos)
+      bs = bs.substr(0, pos) + bs.substr(pos+1);
+    myTypeDetected->setLabel(bs +  "detected");
+  }
+  else
+    myTypeDetected->setLabel("");
+}
 
-  // Console properties
-  myLeftDiff->setSelected(myGameProperties.get(Console_LeftDifficulty), "B");
-  myRightDiff->setSelected(myGameProperties.get(Console_RightDifficulty), "B");
-  myTVType->setSelected(myGameProperties.get(Console_TelevisionType), "COLOR");
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void GameInfoDialog::loadConsoleProperties(const Properties& props)
+{
+  myLeftDiffGroup->setSelected(props.get(Console_LeftDifficulty) == "A" ? 0 : 1);
+  myRightDiffGroup->setSelected(props.get(Console_RightDifficulty) == "A" ? 0 : 1);
+  myTVTypeGroup->setSelected(props.get(Console_TelevisionType) == "BW" ? 1 : 0);
+}
 
-  // Controller properties
-  myP0Controller->setSelected(myGameProperties.get(Controller_Left), "JOYSTICK");
-  myP1Controller->setSelected(myGameProperties.get(Controller_Right), "JOYSTICK");
-  mySwapPorts->setState(myGameProperties.get(Console_SwapPorts) == "YES");
-  mySwapPaddles->setState(myGameProperties.get(Controller_SwapPaddles) == "YES");
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void GameInfoDialog::loadControllerProperties(const Properties& props)
+{
+  myP0Controller->setSelected(props.get(Controller_Left), "JOYSTICK");
+  myP1Controller->setSelected(props.get(Controller_Right), "JOYSTICK");
+  mySwapPorts->setState(props.get(Console_SwapPorts) == "YES");
+  mySwapPaddles->setState(props.get(Controller_SwapPaddles) == "YES");
 
   // MouseAxis property (potentially contains 'range' information)
-  istringstream m_axis(myGameProperties.get(Controller_MouseAxis));
+  istringstream m_axis(props.get(Controller_MouseAxis));
   string m_control, m_range;
   m_axis >> m_control;
   bool autoAxis = BSPF::equalsIgnoreCase(m_control, "AUTO");
+  myMouseControl->setState(!autoAxis);
   if(autoAxis)
   {
-    myMouseControl->setSelectedIndex(0);
     myMouseX->setSelectedIndex(0);
     myMouseY->setSelectedIndex(0);
   }
   else
   {
-    myMouseControl->setSelectedIndex(1);
     myMouseX->setSelected(m_control[0] - '0');
     myMouseY->setSelected(m_control[1] - '0');
   }
@@ -442,56 +438,81 @@ void GameInfoDialog::loadView()
   if(m_axis >> m_range)
   {
     myMouseRange->setValue(atoi(m_range.c_str()));
-    myMouseRangeLabel->setLabel(m_range);
   }
   else
   {
     myMouseRange->setValue(100);
-    myMouseRangeLabel->setLabel("100");
   }
 
-  // Display properties
-  myFormat->setSelected(myGameProperties.get(Display_Format), "AUTO");
+  updateControllerStates();
+}
 
-  const string& ystart = myGameProperties.get(Display_YStart);
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void GameInfoDialog::loadDisplayProperties(const Properties& props)
+{
+  myFormat->setSelected(props.get(Display_Format), "AUTO");
+  if(instance().hasConsole() && myFormat->getSelectedTag().toString() == "AUTO")
+  {
+    const string& format = instance().console().about().DisplayFormat;
+    string label = format.substr(0, format.length() - 1);
+    myFormatDetected->setLabel(label + " detected");
+  }
+  else
+    myFormatDetected->setLabel("");
+
+  const string& ystart = props.get(Display_YStart);
   myYStart->setValue(atoi(ystart.c_str()));
-  myYStartLabel->setLabel(ystart == "0" ? "Auto" : ystart);
+  myYStart->setValueLabel(ystart == "0" ? "Auto" : ystart);
+  myYStart->setValueUnit(ystart == "0" ? "" : "px");
+  if(instance().hasConsole() && ystart == "0")
+  {
+    stringstream ss;
+    ss << instance().console().tia().ystart() << "px detected";
+    myYStartDetected->setLabel(ss.str());
+  }
+  else
+    myYStartDetected->setLabel("");
 
-  const string& height = myGameProperties.get(Display_Height);
+  const string& height = props.get(Display_Height);
   myHeight->setValue(atoi(height.c_str()));
-  myHeightLabel->setLabel(height == "0" ? "Auto" : height);
+  myHeight->setValueLabel(height == "0" ? "Auto" : height);
+  myHeight->setValueUnit(height == "0" ? "" : "px");
 
-  bool usePhosphor = myGameProperties.get(Display_Phosphor) == "YES";
+  if(instance().hasConsole() && height == "0")
+  {
+    stringstream ss;
+    ss << instance().console().tia().height() << "px detected";
+    myHeightDetected->setLabel(ss.str());
+  }
+  else
+    myHeightDetected->setLabel("");
+
+  bool usePhosphor = props.get(Display_Phosphor) == "YES";
   myPhosphor->setState(usePhosphor);
   myPPBlend->setEnabled(usePhosphor);
-  myPPBlendLabel->setEnabled(usePhosphor);
 
-  const string& blend = myGameProperties.get(Display_PPBlend);
+  const string& blend = props.get(Display_PPBlend);
   myPPBlend->setValue(atoi(blend.c_str()));
-  myPPBlendLabel->setLabel(blend == "0" ? "Auto" : blend);
-
-  myTab->loadConfig();
+  myPPBlend->setValueLabel(blend == "0" ? "Default" : blend);
+  myPPBlend->setValueUnit(blend == "0" ? "" : "%");
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::saveConfig()
 {
-  if(!myPropertiesLoaded)
-    return;
-
   // Cartridge properties
   myGameProperties.set(Cartridge_Name, myName->getText());
   myGameProperties.set(Cartridge_Manufacturer, myManufacturer->getText());
   myGameProperties.set(Cartridge_ModelNo, myModelNo->getText());
   myGameProperties.set(Cartridge_Rarity, myRarity->getText());
   myGameProperties.set(Cartridge_Note, myNote->getText());
-  myGameProperties.set(Cartridge_Sound, mySound->getSelectedTag().toString());
+  myGameProperties.set(Cartridge_Sound, mySound->getState() ? "STEREO" : "MONO");
   myGameProperties.set(Cartridge_Type, myType->getSelectedTag().toString());
 
   // Console properties
-  myGameProperties.set(Console_LeftDifficulty, myLeftDiff->getSelectedTag().toString());
-  myGameProperties.set(Console_RightDifficulty, myRightDiff->getSelectedTag().toString());
-  myGameProperties.set(Console_TelevisionType, myTVType->getSelectedTag().toString());
+  myGameProperties.set(Console_LeftDifficulty, myLeftDiffGroup->getSelected() ? "B" : "A");
+  myGameProperties.set(Console_RightDifficulty, myRightDiffGroup->getSelected() ? "B" : "A");
+  myGameProperties.set(Console_TelevisionType, myTVTypeGroup->getSelected() ? "BW" : "COLOR");
 
   // Controller properties
   myGameProperties.set(Controller_Left, myP0Controller->getSelectedTag().toString());
@@ -500,47 +521,103 @@ void GameInfoDialog::saveConfig()
   myGameProperties.set(Controller_SwapPaddles, (mySwapPaddles->isEnabled() && mySwapPaddles->getState()) ? "YES" : "NO");
 
   // MouseAxis property (potentially contains 'range' information)
-  string mcontrol = myMouseControl->getSelectedTag().toString();
-  if(mcontrol != "AUTO")
+  string mcontrol = "AUTO";
+  if(myMouseControl->getState())
     mcontrol = myMouseX->getSelectedTag().toString() +
                myMouseY->getSelectedTag().toString();
-  string range = myMouseRangeLabel->getLabel();
+  string range = myMouseRange->getValueLabel();
   if(range != "100")
     mcontrol += " " + range;
   myGameProperties.set(Controller_MouseAxis, mcontrol);
 
   // Display properties
+  const string& ystart = myGameProperties.get(Display_YStart);
+  uInt32 oldYStart = atoi(ystart.c_str());
+  const string& height = myGameProperties.get(Display_Height);
+  uInt32 oldHeight = atoi(height.c_str());
+
   myGameProperties.set(Display_Format, myFormat->getSelectedTag().toString());
-  myGameProperties.set(Display_YStart, myYStartLabel->getLabel() == "Auto" ? "0" :
-                       myYStartLabel->getLabel());
-  myGameProperties.set(Display_Height, myHeightLabel->getLabel() == "Auto" ? "0" :
-                       myHeightLabel->getLabel());
+  myGameProperties.set(Display_YStart, myYStart->getValueLabel() == "Auto" ? "0" :
+                       myYStart->getValueLabel());
+  myGameProperties.set(Display_Height, myHeight->getValueLabel() == "Auto" ? "0" :
+                       myHeight->getValueLabel());
   myGameProperties.set(Display_Phosphor, myPhosphor->getState() ? "YES" : "NO");
+  myGameProperties.set(Display_PPBlend, myPPBlend->getValueLabel() == "Default" ? "0" :
+                       myPPBlend->getValueLabel());
 
-  myGameProperties.set(Display_PPBlend, myPPBlendLabel->getLabel() == "Auto" ? "0" :
-                       myPPBlendLabel->getLabel());
-
-  // Determine whether to add or remove an entry from the properties set
-  if(myDefaultsSelected)
-    instance().propSet().removeMD5(myGameProperties.get(Cartridge_MD5));
-  else
-    instance().propSet().insert(myGameProperties);
+  // Always insert; if the properties are already present, nothing will happen
+  instance().propSet().insert(myGameProperties);
 
   // In any event, inform the Console
   if(instance().hasConsole())
+  {
     instance().console().setProperties(myGameProperties);
+
+    // update relevant 'Cartridge' tab settings immediately
+    instance().console().initializeAudio();
+
+    // update 'Console' tab settings immediately
+    instance().console().switches().setTvColor(myTVTypeGroup->getSelected() == 0);
+    instance().console().switches().setLeftDifficultyA(myLeftDiffGroup->getSelected() == 0);
+    instance().console().switches().setRightDifficultyA(myRightDiffGroup->getSelected() == 0);
+
+    // update 'Display' tab settings immediately
+    instance().console().setFormat(myFormat->getSelected());
+
+    // only call tia().reset() when values have changed
+    bool reset = false;
+    if(uInt32((myYStart->getValue()) != 0 || oldYStart != 0) &&
+      uInt32(myYStart->getValue()) != instance().console().tia().ystart())
+    {
+      instance().console().updateYStart(myYStart->getValue());
+      reset = true;
+    }
+    if(uInt32((myHeight->getValue()) != TIAConstants::minViewableHeight - 1 || oldHeight != 0) &&
+       uInt32(myHeight->getValue()) != instance().console().tia().height())
+    {
+      instance().console().tia().setHeight(myHeight->getValue());
+      reset = true;
+    }
+    instance().frameBuffer().tiaSurface().enablePhosphor(myPhosphor->getState(), myPPBlend->getValue());
+    if (reset)
+      instance().console().tia().reset();
+
+    // Certain calls above may blank the TIA image (notably, setFormat)
+    // So we make sure we have a valid image when the dialog exits
+    instance().console().tia().renderToFrameBuffer();
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void GameInfoDialog::setDefaults()
 {
   // Load the default properties
-  string md5 = myGameProperties.get(Cartridge_MD5);
-  instance().propSet().getMD5(md5, myGameProperties, true);
+  Properties defaultProperties;
+  const string& md5 = myGameProperties.get(Cartridge_MD5);
 
-  // Reload the current dialog
-  loadView();
-  myDefaultsSelected = true;
+  instance().propSet().getMD5(md5, defaultProperties, true);
+
+  switch(myTab->getActiveTab())
+  {
+    case 0: // Cartridge properties
+      loadCartridgeProperties(defaultProperties);
+      break;
+
+    case 1: // Console properties
+      loadConsoleProperties(defaultProperties);
+      break;
+
+    case 2: // Controller properties
+      loadControllerProperties(defaultProperties);
+      break;
+
+    case 3: // Display properties
+      loadDisplayProperties(defaultProperties);
+      break;
+
+    default: // make the complier happy
+      break;
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -549,14 +626,11 @@ void GameInfoDialog::updateControllerStates()
   const string& contrP0 = myP0Controller->getSelectedTag().toString();
   const string& contrP1 = myP1Controller->getSelectedTag().toString();
   bool enableEEEraseButton = false;
-  bool enableSwapPaddles = false;
-  bool enableSwapPorts = false;
 
   // Compumate bankswitching scheme doesn't allow to select controllers
   bool enableSelectControl = myType->getSelectedTag() != "CM";
 
-  enableSwapPorts = enableSelectControl;
-  enableSwapPaddles = BSPF::startsWithIgnoreCase(contrP0, "PADDLES") ||
+  bool enableSwapPaddles = BSPF::startsWithIgnoreCase(contrP0, "PADDLES") ||
     BSPF::startsWithIgnoreCase(contrP1, "PADDLES");
 
   if(instance().hasConsole())
@@ -565,10 +639,10 @@ void GameInfoDialog::updateControllerStates()
     const Controller& rport = instance().console().rightController();
 
     // we only enable the button if we have a valid previous and new controller.
-    enableEEEraseButton = ((lport.type() == Controller::SaveKey && contrP0 == "SAVEKEY")
-                           || (lport.type() == Controller::AtariVox && contrP0 == "ATARIVOX")
-                           || (rport.type() == Controller::SaveKey && contrP1 == "SAVEKEY")
-                           || (rport.type() == Controller::AtariVox && contrP1 == "ATARIVOX"));
+    enableEEEraseButton = ((lport.type() == Controller::SaveKey && contrP0 == "SAVEKEY") ||
+                           (rport.type() == Controller::SaveKey && contrP1 == "SAVEKEY") ||
+                           (lport.type() == Controller::AtariVox && contrP0 == "ATARIVOX") ||
+                           (rport.type() == Controller::AtariVox && contrP1 == "ATARIVOX"));
   }
 
   myP0Label->setEnabled(enableSelectControl);
@@ -576,7 +650,7 @@ void GameInfoDialog::updateControllerStates()
   myP0Controller->setEnabled(enableSelectControl);
   myP1Controller->setEnabled(enableSelectControl);
 
-  mySwapPorts->setEnabled(enableSwapPorts);
+  mySwapPorts->setEnabled(enableSelectControl);
   mySwapPaddles->setEnabled(enableSwapPaddles);
 
   myEraseEEPROMLabel->setEnabled(enableEEEraseButton);
@@ -639,38 +713,43 @@ void GameInfoDialog::handleCommand(CommandSender* sender, int cmd,
     {
       bool status = myPhosphor->getState();
       myPPBlend->setEnabled(status);
-      myPPBlendLabel->setEnabled(status);
       break;
     }
 
     case kYStartChanged:
-      if(myYStart->getValue() == TIAConstants::minYStart-1)
-        myYStartLabel->setLabel("Auto");
+      if(myYStart->getValue() == 0)
+      {
+        myYStart->setValueLabel("Auto");
+        myYStart->setValueUnit("");
+      }
       else
-        myYStartLabel->setValue(myYStart->getValue());
+        myYStart->setValueUnit("px");
+
       break;
 
     case kHeightChanged:
       if(myHeight->getValue() == TIAConstants::minViewableHeight-1)
-        myHeightLabel->setLabel("Auto");
+      {
+        myHeight->setValueLabel("Auto");
+        myHeight->setValueUnit("");
+      }
       else
-        myHeightLabel->setValue(myHeight->getValue());
+        myHeight->setValueUnit("px");
       break;
 
     case kPPBlendChanged:
       if(myPPBlend->getValue() == 0)
-        myPPBlendLabel->setLabel("Auto");
+      {
+        myPPBlend->setValueLabel("Default");
+        myPPBlend->setValueUnit("");
+      }
       else
-        myPPBlendLabel->setValue(myPPBlend->getValue());
-      break;
-
-    case kMRangeChanged:
-      myMouseRangeLabel->setValue(myMouseRange->getValue());
+        myPPBlend->setValueUnit("%");
       break;
 
     case kMCtrlChanged:
     {
-      bool state = myMouseControl->getSelectedTag() != "AUTO";
+      bool state = myMouseControl->getState();
       myMouseX->setEnabled(state);
       myMouseY->setEnabled(state);
       break;

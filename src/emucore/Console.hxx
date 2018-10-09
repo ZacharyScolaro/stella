@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -27,14 +27,19 @@ class M6532;
 class Cartridge;
 class CompuMate;
 class Debugger;
+class AudioQueue;
+class AudioSettings;
 
 #include "bspf.hxx"
 #include "Control.hxx"
 #include "Props.hxx"
-#include "TIATypes.hxx"
+#include "TIAConstants.hxx"
 #include "FrameBuffer.hxx"
 #include "Serializable.hxx"
+#include "EventHandlerConstants.hxx"
 #include "NTSCFilter.hxx"
+#include "EmulationTiming.hxx"
+#include "ConsoleTiming.hxx"
 #include "frame-manager/AbstractFrameManager.hxx"
 
 /**
@@ -48,17 +53,6 @@ struct ConsoleInfo
   string Control0;
   string Control1;
   string DisplayFormat;
-  string InitialFrameRate;
-};
-
-/**
-  Contains timing information about the specified console.
-*/
-enum class ConsoleTiming
-{
-  ntsc,  // console with CPU running at 1.193182 MHz, NTSC colours
-  pal,   // console with CPU running at 1.182298 MHz, PAL colours
-  secam  // console with CPU running at 1.187500 MHz, SECAM colours
 };
 
 /**
@@ -78,7 +72,7 @@ class Console : public Serializable
       @param props    The properties for the cartridge
     */
     Console(OSystem& osystem, unique_ptr<Cartridge>& cart,
-            const Properties& props);
+            const Properties& props, AudioSettings& audioSettings);
 
     /**
       Destructor
@@ -93,6 +87,9 @@ class Console : public Serializable
     */
     Controller& leftController() const  { return *myLeftControl;  }
     Controller& rightController() const { return *myRightControl; }
+    Controller& controller(Controller::Jack jack) const {
+      return jack == Controller::Left ? leftController() : rightController();
+    }
 
     /**
       Get the TIA for this console
@@ -153,13 +150,6 @@ class Console : public Serializable
     bool load(Serializer& in) override;
 
     /**
-      Get a descriptor for this console class (used in error checking).
-
-      @return The name of the object
-    */
-    string name() const override { return "Console"; }
-
-    /**
       Set the properties to those given
 
       @param props The properties to use for the current game
@@ -184,7 +174,12 @@ class Console : public Serializable
     /**
       Informs the Console of a change in EventHandler state.
     */
-    void stateChanged(EventHandler::State state);
+    void stateChanged(EventHandlerState state);
+
+    /**
+      Retrieve emulation timing provider.
+     */
+    EmulationTiming& emulationTiming() { return myEmulationTiming; }
 
   public:
     /**
@@ -193,6 +188,11 @@ class Console : public Serializable
       @param direction +1 indicates increase, -1 indicates decrease.
     */
     void toggleFormat(int direction = 1);
+
+    /**
+      Set NTSC/PAL/SECAM (and variants) display format.
+    */
+    void setFormat(uInt32 format);
 
     /**
       Toggle between the available palettes.
@@ -261,16 +261,9 @@ class Console : public Serializable
     void changeHeight(int direction);
 
     /**
-      Sets the framerate of the console, which in turn communicates
-      this to all applicable subsystems.
+      Returns the current framerate.
     */
-    void setFramerate(float framerate);
-
-    /**
-      Returns the framerate based on a number of factors
-      (whether 'framerate' is set, what display format is in use, etc)
-    */
-    float getFramerate() const { return myFramerate; }
+    float getFramerate() const;
 
     /**
       Toggles the TIA bit specified in the method name.
@@ -304,22 +297,42 @@ class Console : public Serializable
     */
     void toggleJitter() const;
 
+    /**
+     * Update yatart and run autodetection if necessary.
+     */
+    void updateYStart(uInt32 ystart);
+
   private:
     /**
      * Dry-run the emulation and detect the frame layout (PAL / NTSC).
      */
-    void autodetectFrameLayout();
+    void autodetectFrameLayout(bool reset = true);
 
     /**
      * Dryrun the emulation and detect ystart (the first visible scanline).
      */
-    void autodetectYStart();
+    void autodetectYStart(bool reset = true);
+
+    /**
+     * Rerun frame layout autodetection
+     */
+    void redetectFrameLayout();
+
+    /**
+     * Rerun ystart autodetection.
+     */
+    void redetectYStart();
 
     /**
       Sets various properties of the TIA (YStart, Height, etc) based on
       the current display format.
     */
     void setTIAProperties();
+
+    /**
+      Create the audio queue
+     */
+    void createAudioQueue();
 
     /**
       Adds the left and right controllers to the console.
@@ -377,8 +390,11 @@ class Console : public Serializable
     // Pointer to the TIA object
     unique_ptr<TIA> myTIA;
 
-    // The frame manager instance that is used during emulation.
+    // The frame manager instance that is used during emulation
     unique_ptr<AbstractFrameManager> myFrameManager;
+
+    // The audio fragment queue that connects TIA and audio driver
+    shared_ptr<AudioQueue> myAudioQueue;
 
     // Pointer to the Cartridge (the debugger needs it)
     unique_ptr<Cartridge> myCart;
@@ -395,14 +411,14 @@ class Console : public Serializable
     // The currently defined display format (NTSC/PAL/SECAM)
     string myDisplayFormat;
 
-    // The currently defined display framerate
-    float myFramerate;
-
     // Display format currently in use
     uInt32 myCurrentFormat;
 
     // Autodetected ystart.
     uInt32 myAutodetectedYstart;
+
+    // Is ystart currently autodetected?
+    bool myYStartAutodetected;
 
     // Indicates whether an external palette was found and
     // successfully loaded
@@ -413,6 +429,13 @@ class Console : public Serializable
 
     // Contains timing information for this console
     ConsoleTiming myConsoleTiming;
+
+    // Emulation timing provider. This ties together the timing of the core emulation loop
+    // and the parameters that govern audio synthesis
+    EmulationTiming myEmulationTiming;
+
+    // The audio settings
+    AudioSettings& myAudioSettings;
 
     // Table of RGB values for NTSC, PAL and SECAM
     static uInt32 ourNTSCPalette[256];

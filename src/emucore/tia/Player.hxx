@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,7 +26,7 @@ class TIA;
 class Player : public Serializable
 {
   public:
-    Player(uInt32 collisionMask);
+    explicit Player(uInt32 collisionMask);
 
   public:
 
@@ -62,6 +62,9 @@ class Player : public Serializable
     bool movementTick(uInt32 clock, bool apply);
 
     void tick();
+
+    void nextLine();
+
     uInt8 getClock() const { return myCounter; }
 
     bool isOn() const { return (collision & 0x8000); }
@@ -84,7 +87,6 @@ class Player : public Serializable
     */
     bool save(Serializer& out) const override;
     bool load(Serializer& in) override;
-    string name() const override { return "TIA_Player"; }
 
   public:
 

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -42,7 +42,8 @@ Genesis::Genesis(Jack jack, const Event& event, const System& system)
     myFire2Event   = Event::JoystickOneFire5;
   }
 
-  updateAnalogPin(Five, minimumResistance);
+  updateAnalogPin(Five, MIN_RESISTANCE);
+  updateAnalogPin(Nine, MIN_RESISTANCE);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -60,7 +61,7 @@ void Genesis::update()
   // in that the logic is inverted
   updateAnalogPin(
     Five,
-    (myEvent.get(myFire2Event) == 0) ? minimumResistance : maximumResistance
+    (myEvent.get(myFire2Event) == 0) ? MIN_RESISTANCE : MAX_RESISTANCE
   );
 
   // Mouse motion and button events
@@ -92,7 +93,7 @@ void Genesis::update()
     if(myEvent.get(Event::MouseButtonLeftValue))
       myDigitalPinState[Six] = false;
     if(myEvent.get(Event::MouseButtonRightValue))
-      updateAnalogPin(Five, maximumResistance);
+      updateAnalogPin(Five, MAX_RESISTANCE);
   }
 }
 

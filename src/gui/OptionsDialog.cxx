@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -17,6 +17,7 @@
 
 #include "OSystem.hxx"
 #include "FrameBuffer.hxx"
+#include "EventHandler.hxx"
 #include "Dialog.hxx"
 #include "DialogContainer.hxx"
 #include "Widget.hxx"
@@ -36,6 +37,7 @@
 #include "AboutDialog.hxx"
 #include "OptionsDialog.hxx"
 #include "Launcher.hxx"
+#include "Settings.hxx"
 
 #ifdef CHEATCODE_SUPPORT
   #include "CheatCodeDialog.hxx"
@@ -46,69 +48,70 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
                              GuiObject* boss, int max_w, int max_h, stellaMode mode)
-  : Dialog(osystem, parent),
-    myMode(mode)
+  : Dialog(osystem, parent, osystem.frameBuffer().font(), "Options"),
+    myMode(mode),
+    _boss(boss)
 {
-  const GUI::Font& font = instance().frameBuffer().font();
-  const int buttonWidth = font.getStringWidth("Developer Settings" + ELLIPSIS) + 20,
-            buttonHeight = font.getLineHeight() + 6,
-            rowHeight = font.getLineHeight() + 10;
+  const int buttonWidth = _font.getStringWidth("Game Properties" + ELLIPSIS) + 20,
+            buttonHeight = _font.getLineHeight() + 6,
+            rowHeight = _font.getLineHeight() + 10;
+  const int VBORDER = 10 + _th;
 
   _w = 2 * buttonWidth + 30;
-  _h = 7 * rowHeight + 15;
+  _h = 7 * rowHeight + 15 + _th;
 
-  int xoffset = 10, yoffset = 10;
+  int xoffset = 10, yoffset = VBORDER;
   WidgetArray wid;
   ButtonWidget* b = nullptr;
 
   auto ADD_OD_BUTTON = [&](const string& label, int cmd)
   {
-    ButtonWidget* bw = new ButtonWidget(this, font, xoffset, yoffset,
+    ButtonWidget* bw = new ButtonWidget(this, _font, xoffset, yoffset,
             buttonWidth, buttonHeight, label, cmd);
     yoffset += rowHeight;
     return bw;
   };
 
-  b = ADD_OD_BUTTON("Video Settings" + ELLIPSIS, kVidCmd);
+  b = ADD_OD_BUTTON("Video" + ELLIPSIS, kVidCmd);
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("Audio Settings" + ELLIPSIS, kAudCmd);
+  b = ADD_OD_BUTTON("Audio" + ELLIPSIS, kAudCmd);
 #ifndef SOUND_SUPPORT
   b->clearFlags(WIDGET_ENABLED);
 #endif
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("Input Settings" + ELLIPSIS, kInptCmd);
+  b = ADD_OD_BUTTON("Input" + ELLIPSIS, kInptCmd);
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("UI Settings" + ELLIPSIS, kUsrIfaceCmd);
+  b = ADD_OD_BUTTON("User Interface" + ELLIPSIS, kUsrIfaceCmd);
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("Snapshot Settings" + ELLIPSIS, kSnapCmd);
+  b = ADD_OD_BUTTON("Snapshots" + ELLIPSIS, kSnapCmd);
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("Config Paths" + ELLIPSIS, kCfgPathsCmd);
+  b = ADD_OD_BUTTON("Paths" + ELLIPSIS, kCfgPathsCmd);
   wid.push_back(b);
 
-  myRomAuditButton = ADD_OD_BUTTON("Audit ROMs" + ELLIPSIS, kAuditCmd);
-  wid.push_back(myRomAuditButton);
+  b = ADD_OD_BUTTON("Developer" + ELLIPSIS, kDevelopCmd);
+  wid.push_back(b);
 
   // Move to second column
-  xoffset += buttonWidth + 10;  yoffset = 10;
+  xoffset += buttonWidth + 10;  yoffset = VBORDER;
 
   myGameInfoButton = ADD_OD_BUTTON("Game Properties" + ELLIPSIS, kInfoCmd);
   wid.push_back(myGameInfoButton);
 
-  myCheatCodeButton = ADD_OD_BUTTON("Cheat Code" + ELLIPSIS, kCheatCmd);
+  myCheatCodeButton = ADD_OD_BUTTON("Cheat Codes" + ELLIPSIS, kCheatCmd);
 #ifndef CHEATCODE_SUPPORT
   myCheatCodeButton->clearFlags(WIDGET_ENABLED);
 #endif
   wid.push_back(myCheatCodeButton);
 
-  b = ADD_OD_BUTTON("System Logs" + ELLIPSIS, kLoggerCmd);
-  wid.push_back(b);
+  myRomAuditButton = ADD_OD_BUTTON("Audit ROMs" + ELLIPSIS, kAuditCmd);
+  wid.push_back(myRomAuditButton);
 
-  b = ADD_OD_BUTTON("Developer Settings" + ELLIPSIS, kDevelopCmd);
+  b = ADD_OD_BUTTON("System Logs" + ELLIPSIS, kLoggerCmd);
   wid.push_back(b);
 
   b = ADD_OD_BUTTON("Help" + ELLIPSIS, kHelpCmd);
@@ -117,26 +120,25 @@ OptionsDialog::OptionsDialog(OSystem& osystem, DialogContainer& parent,
   b = ADD_OD_BUTTON("About" + ELLIPSIS, kAboutCmd);
   wid.push_back(b);
 
-  b = ADD_OD_BUTTON("Exit Menu", kExitCmd);
+  b = ADD_OD_BUTTON("Close", kExitCmd);
   wid.push_back(b);
   addCancelWidget(b);
 
   // Now create all the dialogs attached to each menu button
-  myVideoDialog    = make_unique<VideoDialog>(osystem, parent, font, max_w, max_h, myMode == launcher);
-  myAudioDialog    = make_unique<AudioDialog>(osystem, parent, font);
-  myInputDialog    = make_unique<InputDialog>(osystem, parent, font, max_w, max_h);
-  myUIDialog       = make_unique<UIDialog>(osystem, parent, font);
-  mySnapshotDialog = make_unique<SnapshotDialog>(osystem, parent, font);
-  myConfigPathDialog = make_unique<ConfigPathDialog>(osystem, parent, font, boss);
-  myRomAuditDialog = make_unique<RomAuditDialog>(osystem, parent, font, max_w, max_h);
-  myGameInfoDialog = make_unique<GameInfoDialog>(osystem, parent, font, this);
+  myVideoDialog    = make_unique<VideoDialog>(osystem, parent, _font, max_w, max_h);
+  myAudioDialog    = make_unique<AudioDialog>(osystem, parent, _font);
+  myInputDialog    = make_unique<InputDialog>(osystem, parent, _font, max_w, max_h);
+  myUIDialog       = make_unique<UIDialog>(osystem, parent, _font);
+  mySnapshotDialog = make_unique<SnapshotDialog>(osystem, parent, _font, max_w, max_h);
+  myConfigPathDialog = make_unique<ConfigPathDialog>(osystem, parent, _font, boss, max_w, max_h);
+  myRomAuditDialog = make_unique<RomAuditDialog>(osystem, parent, _font, max_w, max_h);
+  myGameInfoDialog = make_unique<GameInfoDialog>(osystem, parent, _font, this);
 #ifdef CHEATCODE_SUPPORT
-  myCheatCodeDialog = make_unique<CheatCodeDialog>(osystem, parent, font);
+  myCheatCodeDialog = make_unique<CheatCodeDialog>(osystem, parent, _font);
 #endif
-  myLoggerDialog    = make_unique<LoggerDialog>(osystem, parent, font, max_w, max_h);
-  myDeveloperDialog = make_unique<DeveloperDialog>(osystem, parent, font, max_w, max_h);
-  myHelpDialog      = make_unique<HelpDialog>(osystem, parent, font);
-  myAboutDialog     = make_unique<AboutDialog>(osystem, parent, font);
+  myDeveloperDialog = make_unique<DeveloperDialog>(osystem, parent, _font, max_w, max_h);
+  myHelpDialog      = make_unique<HelpDialog>(osystem, parent, _font);
+  myAboutDialog     = make_unique<AboutDialog>(osystem, parent, _font);
 
   addToFocusList(wid);
 
@@ -164,10 +166,10 @@ void OptionsDialog::loadConfig()
   // in launcher mode
   switch(instance().eventHandler().state())
   {
-    case EventHandler::S_EMULATE:
+    case EventHandlerState::EMULATION:
       myGameInfoButton->setFlags(WIDGET_ENABLED);
       break;
-    case EventHandler::S_LAUNCHER:
+    case EventHandlerState::LAUNCHER:
       if(instance().launcher().selectedRomMD5() != "")
         myGameInfoButton->setFlags(WIDGET_ENABLED);
       else
@@ -185,8 +187,21 @@ void OptionsDialog::handleCommand(CommandSender* sender, int cmd,
   switch(cmd)
   {
     case kVidCmd:
+    {
+      // This dialog is resizable under certain conditions, so we need
+      // to re-create it as necessary
+      uInt32 w = 0, h = 0;
+      getDynamicBounds(w, h);
+
+      if(myVideoDialog == nullptr ||
+          uInt32(myVideoDialog->getWidth()) != w ||
+          uInt32(myVideoDialog->getHeight()) != h)
+      {
+        myVideoDialog = make_unique<VideoDialog>(instance(), parent(), instance().frameBuffer().font(), w, h);
+      }
       myVideoDialog->open();
       break;
+    }
 
     case kAudCmd:
       myAudioDialog->open();
@@ -201,12 +216,39 @@ void OptionsDialog::handleCommand(CommandSender* sender, int cmd,
       break;
 
     case kSnapCmd:
+    {
+      // This dialog is resizable under certain conditions, so we need
+      // to re-create it as necessary
+      uInt32 w = 0, h = 0;
+      getDynamicBounds(w, h);
+
+      if(mySnapshotDialog == nullptr ||
+          uInt32(mySnapshotDialog->getWidth()) != w ||
+          uInt32(mySnapshotDialog->getHeight()) != h)
+      {
+        mySnapshotDialog = make_unique<SnapshotDialog>(instance(), parent(), instance().frameBuffer().font(), w, h);
+      }
       mySnapshotDialog->open();
       break;
+    }
 
     case kCfgPathsCmd:
+    {
+      // This dialog is resizable under certain conditions, so we need
+      // to re-create it as necessary
+      uInt32 w = 0, h = 0;
+      getDynamicBounds(w, h);
+
+      if(myConfigPathDialog == nullptr ||
+          uInt32(myConfigPathDialog->getWidth()) != w ||
+          uInt32(myConfigPathDialog->getHeight()) != h)
+      {
+        myConfigPathDialog = make_unique<ConfigPathDialog>(instance(), parent(),
+            instance().frameBuffer().font(), _boss, w, h);
+      }
       myConfigPathDialog->open();
       break;
+    }
 
     case kAuditCmd:
       myRomAuditDialog->open();
@@ -223,18 +265,23 @@ void OptionsDialog::handleCommand(CommandSender* sender, int cmd,
 #endif
 
     case kLoggerCmd:
+    {
       // This dialog is resizable under certain conditions, so we need
       // to re-create it as necessary
-      if(myMode != launcher)
-      {
-        uInt32 w = 0, h = 0;
-        bool uselargefont = getResizableBounds(w, h);
+      uInt32 w = 0, h = 0;
+      bool uselargefont = getDynamicBounds(w, h);
 
+      if(myLoggerDialog == nullptr ||
+          uInt32(myLoggerDialog->getWidth()) != w ||
+          uInt32(myLoggerDialog->getHeight()) != h)
+      {
         myLoggerDialog = make_unique<LoggerDialog>(instance(), parent(),
             instance().frameBuffer().font(), w, h, uselargefont);
       }
+
       myLoggerDialog->open();
       break;
+    }
 
     case kDevelopCmd:
       myDeveloperDialog->open();

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,7 +28,8 @@ Missile::Missile(uInt32 collisionMask)
   : myCollisionMaskDisabled(collisionMask),
     myCollisionMaskEnabled(0xFFFF),
     myIsSuppressed(false),
-    myDecodesOffset(0)
+    myDecodesOffset(0),
+    myTIA(nullptr)
 {
   reset();
 }
@@ -47,12 +48,12 @@ void Missile::reset()
   myWidth = 1;
   myEffectiveWidth = 1;
   myIsRendering = false;
+  myIsVisible = false;
   myRenderCounter = 0;
   myColor = myObjectColor = myDebugColor = 0;
   myDebugEnabled = false;
   collision = myCollisionMaskDisabled;
-
-  updateEnabled();
+  myIsEnabled = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -62,9 +63,11 @@ void Missile::enam(uInt8 value)
 
   myEnam = (value & 0x02) > 0;
 
-  if (oldEnam != myEnam) myTIA->flushLineCache();
+  if (oldEnam != myEnam) {
+    myTIA->flushLineCache();
 
-  updateEnabled();
+    updateEnabled();
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -97,7 +100,7 @@ void Missile::resm(uInt8 counter, bool hblank)
 
         case 2:
           if (hblank) myIsRendering = myRenderCounter > 1;
-          else if (myRenderCounter == 0) myRenderCounter++;
+          else if (myRenderCounter == 0) ++myRenderCounter;
 
           break;
 
@@ -166,41 +169,43 @@ bool Missile::movementTick(uInt8 clock, uInt8 hclock, bool apply)
 
   if (clock == myHmmClocks) myIsMoving = false;
 
-  if (myIsMoving && apply) tick(hclock);
+  if (myIsMoving && apply) tick(hclock, false);
 
   return myIsMoving;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void Missile::tick(uInt8 hclock)
+void Missile::tick(uInt8 hclock, bool isReceivingMclock)
 {
-  const bool render =
+  myIsVisible =
     myIsRendering &&
-    (myRenderCounter >= 0 || (myIsMoving && myRenderCounter == -1 && myWidth < 4 && ((hclock + 1) % 4 == 3))) &&
-    myIsEnabled;
+    (myRenderCounter >= 0 || (myIsMoving && isReceivingMclock && myRenderCounter == -1 && myWidth < 4 && ((hclock + 1) % 4 == 3)));
 
-  collision = render ? myCollisionMaskEnabled : myCollisionMaskDisabled;
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 
   if (myDecodes[myCounter] && !myResmp) {
     myIsRendering = true;
     myRenderCounter = Count::renderCounterOffset;
   } else if (myIsRendering) {
 
-      if (myIsMoving && myRenderCounter == -1) {
+      if (myRenderCounter == -1) {
+        if (myIsMoving && isReceivingMclock) {
+          switch ((hclock + 1) % 4) {
+            case 3:
+              myEffectiveWidth = myWidth == 1 ? 2 : myWidth;
+              if (myWidth < 4) ++myRenderCounter;
+              break;
 
-        switch ((hclock + 1) % 4) {
-          case 3:
-            myEffectiveWidth = myWidth == 1 ? 2 : myWidth;
-            if (myWidth < 4) myRenderCounter++;
-            break;
+            case 2:
+              myEffectiveWidth = 0;
+              break;
 
-          case 2:
-            myEffectiveWidth = 0;
-            break;
-
-          default:
-            myEffectiveWidth = myWidth;
-            break;
+            default:
+              myEffectiveWidth = myWidth;
+              break;
+          }
+        } else {
+          myEffectiveWidth = myWidth;
         }
       }
 
@@ -208,6 +213,13 @@ void Missile::tick(uInt8 hclock)
   }
 
   if (++myCounter >= 160) myCounter = 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Missile::nextLine()
+{
+  myIsVisible = myIsRendering && (myRenderCounter >= 0);
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -246,6 +258,9 @@ void Missile::applyColorLoss()
 void Missile::updateEnabled()
 {
   myIsEnabled = !myIsSuppressed && myEnam && !myResmp;
+
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
+  myTIA->scheduleCollisionUpdate();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -290,8 +305,6 @@ bool Missile::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     out.putInt(collision);
     out.putInt(myCollisionMaskDisabled);
     out.putInt(myCollisionMaskEnabled);
@@ -308,6 +321,7 @@ bool Missile::save(Serializer& out) const
     out.putByte(myEffectiveWidth);
     out.putByte(myLastMovementTick);
 
+    out.putBool(myIsVisible);
     out.putBool(myIsRendering);
     out.putByte(myRenderCounter);
 
@@ -331,9 +345,6 @@ bool Missile::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     collision = in.getInt();
     myCollisionMaskDisabled = in.getInt();
     myCollisionMaskEnabled = in.getInt();
@@ -350,6 +361,7 @@ bool Missile::load(Serializer& in)
     myEffectiveWidth = in.getByte();
     myLastMovementTick = in.getByte();
 
+    myIsVisible = in.getBool();
     myIsRendering = in.getBool();
     myRenderCounter = in.getByte();
 

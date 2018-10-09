@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -54,6 +54,9 @@ const DebuggerState& RiotDebug::getState()
   myState.INPT4 = inpt(4);
   myState.INPT5 = inpt(5);
 
+  myState.INPTLatch = vblank(6);
+  myState.INPTDump = vblank(7);
+
   // Timer registers
   myState.TIM1T     = tim1T();
   myState.TIM8T     = tim8T();
@@ -63,6 +66,7 @@ const DebuggerState& RiotDebug::getState()
   myState.TIMINT    = timint();
   myState.TIMCLKS   = timClocks();
   myState.INTIMCLKS = intimClocks();
+  myState.TIMDIV    = timDivider();
 
   return myState;
 }
@@ -92,6 +96,9 @@ void RiotDebug::saveOldState()
   myOldState.INPT4 = inpt(4);
   myOldState.INPT5 = inpt(5);
 
+  myOldState.INPTLatch = vblank(6);
+  myOldState.INPTDump = vblank(7);
+
   // Timer registers
   myOldState.TIM1T     = tim1T();
   myOldState.TIM8T     = tim8T();
@@ -101,6 +108,7 @@ void RiotDebug::saveOldState()
   myOldState.TIMINT    = timint();
   myOldState.TIMCLKS   = timClocks();
   myOldState.INTIMCLKS = intimClocks();
+  myOldState.TIMDIV    = timDivider();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -218,6 +226,12 @@ Int32 RiotDebug::intimClocks() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Int32 RiotDebug::timDivider() const
+{
+  return mySystem.m6532().myDivider;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Controller& RiotDebug::controller(Controller::Jack jack) const
 {
   return jack == Controller::Left ? myConsole.leftController() :
@@ -279,10 +293,10 @@ string RiotDebug::dirP0String()
 {
   uInt8 reg = swcha();
   ostringstream buf;
-  buf << (reg & 0x80 ? "" : "right ")
-      << (reg & 0x40 ? "" : "left ")
-      << (reg & 0x20 ? "" : "left ")
-      << (reg & 0x10 ? "" : "left ")
+  buf << ((reg & 0x80) ? "" : "right ")
+      << ((reg & 0x40) ? "" : "left ")
+      << ((reg & 0x20) ? "" : "left ")
+      << ((reg & 0x10) ? "" : "left ")
       << ((reg & 0xf0) == 0xf0 ? "(no directions) " : "");
   return buf.str();
 }
@@ -292,10 +306,10 @@ string RiotDebug::dirP1String()
 {
   uInt8 reg = swcha();
   ostringstream buf;
-  buf << (reg & 0x08 ? "" : "right ")
-      << (reg & 0x04 ? "" : "left ")
-      << (reg & 0x02 ? "" : "left ")
-      << (reg & 0x01 ? "" : "left ")
+  buf << ((reg & 0x08) ? "" : "right ")
+      << ((reg & 0x04) ? "" : "left ")
+      << ((reg & 0x02) ? "" : "left ")
+      << ((reg & 0x01) ? "" : "left ")
       << ((reg & 0x0f) == 0x0f ? "(no directions) " : "");
   return buf.str();
 }
@@ -322,8 +336,8 @@ string RiotDebug::tvTypeString()
 string RiotDebug::switchesString()
 {
   ostringstream buf;
-  buf << (swchb() & 0x2 ? "-" : "+") << "select "
-      << (swchb() & 0x1 ? "-" : "+") << "reset";
+  buf << ((swchb() & 0x2) ? "-" : "+") << "select "
+      << ((swchb() & 0x1) ? "-" : "+") << "reset";
   return buf.str();
 }
 
@@ -356,6 +370,7 @@ string RiotDebug::toString()
       << " 285/TIMINT=" << myDebugger.invIfChanged(state.TIMINT, oldstate.TIMINT)
       << " Timer_Clocks=" << myDebugger.invIfChanged(state.TIMCLKS, oldstate.TIMCLKS)
       << " INTIM_Clocks=" << myDebugger.invIfChanged(state.INTIMCLKS, oldstate.INTIMCLKS)
+      << " Divider=" << myDebugger.invIfChanged(state.TIMDIV, oldstate.TIMDIV)
       << endl
 
       << "Left/P0diff: " << diffP0String() << "   Right/P1diff: " << diffP0String()

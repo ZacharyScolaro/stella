@@ -8,7 +8,7 @@
 // MM     MM 66  66 55  55 00  00 22
 // MM     MM  6666   5555   0000  222222
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,9 +20,7 @@
   #include "Expression.hxx"
   #include "CartDebug.hxx"
   #include "PackedBitArray.hxx"
-  #include "TIA.hxx"
   #include "Base.hxx"
-  #include "M6532.hxx"
 
   // Flags for disassembly types
   #define DISASM_CODE  CartDebug::CODE
@@ -45,8 +43,11 @@
 #include "Settings.hxx"
 #include "Vec.hxx"
 
+#include "TIA.hxx"
+#include "M6532.hxx"
 #include "System.hxx"
 #include "M6502.hxx"
+#include "DispatchResult.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 M6502::M6502(const Settings& settings)
@@ -58,6 +59,7 @@ M6502::M6502(const Settings& settings)
     icycles(0),
     myNumberOfDistinctAccesses(0),
     myLastAddress(0),
+    myLastBreakCycle(ULLONG_MAX),
     myLastPeekAddress(0),
     myLastPokeAddress(0),
     myLastPeekBaseAddress(0),
@@ -69,6 +71,7 @@ M6502::M6502(const Settings& settings)
     myDataAddressForPoke(0),
     myOnHaltCallback(nullptr),
     myHaltRequested(false),
+    myGhostReadsTrap(true),
     myStepStateByInstruction(false)
 {
 #ifdef DEBUGGER_SUPPORT
@@ -115,6 +118,9 @@ void M6502::reset()
   myDataAddressForPoke = 0;
 
   myHaltRequested = false;
+  myGhostReadsTrap = mySettings.getBool("dbg.ghostreadstrap");
+
+  myLastBreakCycle = ULLONG_MAX;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -126,7 +132,7 @@ inline uInt8 M6502::peek(uInt16 address, uInt8 flags)
   // TODO - move this logic directly into CartAR
   if(address != myLastAddress)
   {
-    myNumberOfDistinctAccesses++;
+    ++myNumberOfDistinctAccesses;
     myLastAddress = address;
   }
   ////////////////////////////////////////////////
@@ -136,7 +142,8 @@ inline uInt8 M6502::peek(uInt16 address, uInt8 flags)
   myLastPeekAddress = address;
 
 #ifdef DEBUGGER_SUPPORT
-  if(myReadTraps.isInitialized() && myReadTraps.isSet(address))
+  if(myReadTraps.isInitialized() && myReadTraps.isSet(address)
+     && (myGhostReadsTrap || flags != DISASM_NONE))
   {
     myLastPeekBaseAddress = myDebugger->getBaseAddress(myLastPeekAddress, true); // mirror handling
     int cond = evalCondTraps();
@@ -144,7 +151,8 @@ inline uInt8 M6502::peek(uInt16 address, uInt8 flags)
     {
       myJustHitReadTrapFlag = true;
       stringstream msg;
-      msg << "RTrap[" << Common::Base::HEX2 << cond << "]" << (myTrapCondNames[cond].empty() ? ": " : "If: {" + myTrapCondNames[cond] + "} ");
+      msg << "RTrap" << (flags == DISASM_NONE ? "G[" : "[") << Common::Base::HEX2 << cond << "]"
+        << (myTrapCondNames[cond].empty() ? ": " : "If: {" + myTrapCondNames[cond] + "} ");
       myHitTrapInfo.message = msg.str();
       myHitTrapInfo.address = address;
     }
@@ -161,7 +169,7 @@ inline void M6502::poke(uInt16 address, uInt8 value, uInt8 flags)
   // TODO - move this logic directly into CartAR
   if(address != myLastAddress)
   {
-    myNumberOfDistinctAccesses++;
+    ++myNumberOfDistinctAccesses;
     myLastAddress = address;
   }
   ////////////////////////////////////////////////
@@ -204,13 +212,37 @@ inline void M6502::handleHalt()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void M6502::updateStepStateByInstruction()
+void M6502::execute(uInt64 number, DispatchResult& result)
 {
-  myStepStateByInstruction = myCondBreaks.size() || myCondSaveStates.size() || myTrapConds.size();
+  _execute(number, result);
+
+#ifdef DEBUGGER_SUPPORT
+  // Debugger hack: this ensures that stepping a "STA WSYNC" will actually end at the
+  // beginning of the next line (otherwise, the next instruction would be stepped in order for
+  // the halt to take effect). This is safe because as we know that the next cycle will be a read
+  // cycle anyway.
+  handleHalt();
+#endif
+
+  // Make sure that the hardware state matches the current system clock. This is necessary
+  // to maintain a consistent state for the debugger after stepping and to make sure
+  // that audio samples are generated for the whole timeslice.
+  mySystem->tia().updateEmulation();
+  mySystem->m6532().updateEmulation();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool M6502::execute(uInt32 number)
+bool M6502::execute(uInt64 number)
+{
+  DispatchResult result;
+
+  execute(number, result);
+
+  return result.isSuccess();
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
 {
   // Clear all of the execution status bits except for the fatal error bit
   myExecutionStatus &= FatalErrorBit;
@@ -220,43 +252,53 @@ bool M6502::execute(uInt32 number)
   M6532& riot = mySystem->m6532();
 #endif
 
+  uInt64 previousCycles = mySystem->cycles();
+  uInt64 currentCycles = 0;
+
   // Loop until execution is stopped or a fatal error occurs
   for(;;)
   {
-    for(; !myExecutionStatus && (number != 0); --number)
+    while (!myExecutionStatus && currentCycles < cycles * SYSTEM_CYCLES_PER_CPU)
     {
-#ifdef DEBUGGER_SUPPORT
-      if(myJustHitReadTrapFlag || myJustHitWriteTrapFlag)
-      {
-        bool read = myJustHitReadTrapFlag;
-        myJustHitReadTrapFlag = myJustHitWriteTrapFlag = false;
-        if(myDebugger && myDebugger->start(myHitTrapInfo.message, myHitTrapInfo.address, read))
+  #ifdef DEBUGGER_SUPPORT
+      // Don't break if we haven't actually executed anything yet
+      if (myLastBreakCycle != mySystem->cycles()) {
+        if(myJustHitReadTrapFlag || myJustHitWriteTrapFlag)
         {
-          return true;
+          bool read = myJustHitReadTrapFlag;
+          myJustHitReadTrapFlag = myJustHitWriteTrapFlag = false;
+
+          myLastBreakCycle = mySystem->cycles();
+          result.setDebugger(currentCycles, myHitTrapInfo.message, myHitTrapInfo.address, read);
+          return;
+        }
+
+        if(myBreakPoints.isInitialized() && myBreakPoints.isSet(PC)) {
+          myLastBreakCycle = mySystem->cycles();
+          result.setDebugger(currentCycles, "BP: ", PC);
+          return;
+        }
+
+        int cond = evalCondBreaks();
+        if(cond > -1)
+        {
+          stringstream msg;
+          msg << "CBP[" << Common::Base::HEX2 << cond << "]: " << myCondBreakNames[cond];
+
+          myLastBreakCycle = mySystem->cycles();
+          result.setDebugger(currentCycles, msg.str());
+          return;
         }
       }
 
-      if(myBreakPoints.isInitialized() && myBreakPoints.isSet(PC))
-        if(myDebugger && myDebugger->start("BP: ", PC))
-          return true;
-
-      int cond = evalCondBreaks();
-      if(cond > -1)
-      {
-        stringstream msg;
-        msg << "CBP[" << Common::Base::HEX2 << cond << "]: " << myCondBreakNames[cond];
-        if(myDebugger && myDebugger->start(msg.str()))
-          return true;
-      }
-
-      cond = evalCondSaveStates();
+      int cond = evalCondSaveStates();
       if(cond > -1)
       {
         stringstream msg;
         msg << "conditional savestate [" << Common::Base::HEX2 << cond << "]";
         myDebugger->addState(msg.str());
       }
-#endif  // DEBUGGER_SUPPORT
+  #endif  // DEBUGGER_SUPPORT
 
       uInt16 operandAddress = 0, intermediateAddress = 0;
       uInt8 operand = 0;
@@ -278,14 +320,19 @@ bool M6502::execute(uInt32 number)
           // Oops, illegal instruction executed so set fatal error flag
           myExecutionStatus |= FatalErrorBit;
       }
-      //cycles = mySystem->cycles() - c0;
 
-#ifdef DEBUGGER_SUPPORT
-      if (myStepStateByInstruction) {
+      currentCycles = (mySystem->cycles() - previousCycles);
+
+  #ifdef DEBUGGER_SUPPORT
+      if(myStepStateByInstruction)
+      {
+        // Check out M6502::execute for an explanation.
+        handleHalt();
+
         tia.updateEmulation();
         riot.updateEmulation();
       }
-#endif
+  #endif
     }
 
     // See if we need to handle an interrupt
@@ -299,31 +346,25 @@ bool M6502::execute(uInt32 number)
     // See if execution has been stopped
     if(myExecutionStatus & StopExecutionBit)
     {
-      // Debugger hack: this ensures that stepping a "STA WSYNC" will actually end at the
-      // beginning of the next line (otherwise, the next instruction would be stepped in order for
-      // the halt to take effect). This is safe because as we know that the next cycle will be a read
-      // cycle anyway.
-      handleHalt();
-
       // Yes, so answer that everything finished fine
-      return true;
+      result.setOk(currentCycles);
+      return;
     }
 
     // See if a fatal error has occured
     if(myExecutionStatus & FatalErrorBit)
     {
       // Yes, so answer that something when wrong
-      return false;
+      result.setFatal(currentCycles + icycles);
+      return;
     }
 
     // See if we've executed the specified number of instructions
-    if(number == 0)
+    if (currentCycles >= cycles * SYSTEM_CYCLES_PER_CPU)
     {
-      // See above
-      handleHalt();
-
       // Yes, so answer that everything finished fine
-      return true;
+      result.setOk(currentCycles);
+      return;
     }
   }
 }
@@ -359,12 +400,8 @@ void M6502::interruptHandler()
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool M6502::save(Serializer& out) const
 {
-  const string& CPU = name();
-
   try
   {
-    out.putString(CPU);
-
     out.putByte(A);    // Accumulator
     out.putByte(X);    // X index register
     out.putByte(Y);    // Y index register
@@ -396,6 +433,8 @@ bool M6502::save(Serializer& out) const
 
     out.putBool(myHaltRequested);
     out.putBool(myStepStateByInstruction);
+    out.putBool(myGhostReadsTrap);
+    out.putLong(myLastBreakCycle);
   }
   catch(...)
   {
@@ -409,13 +448,8 @@ bool M6502::save(Serializer& out) const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool M6502::load(Serializer& in)
 {
-  const string& CPU = name();
-
   try
   {
-    if(in.getString() != CPU)
-      return false;
-
     A = in.getByte();    // Accumulator
     X = in.getByte();    // X index register
     Y = in.getByte();    // Y index register
@@ -447,6 +481,9 @@ bool M6502::load(Serializer& in)
 
     myHaltRequested = in.getBool();
     myStepStateByInstruction = in.getBool();
+    myGhostReadsTrap = in.getBool();
+
+    myLastBreakCycle = in.getLong();
   }
   catch(...)
   {
@@ -587,4 +624,12 @@ const StringList& M6502::getCondTrapNames() const
 {
   return myTrapCondNames;
 }
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void M6502::updateStepStateByInstruction()
+{
+  myStepStateByInstruction = myCondBreaks.size() || myCondSaveStates.size() ||
+                             myTrapConds.size();
+}
+
 #endif  // DEBUGGER_SUPPORT

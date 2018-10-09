@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -29,31 +29,24 @@
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ComboDialog::ComboDialog(GuiObject* boss, const GUI::Font& font,
                          const VariantList& combolist)
-  : Dialog(boss->instance(), boss->parent()),
+  : Dialog(boss->instance(), boss->parent(), font, "Add..."),
     myComboEvent(Event::NoType)
 {
   const int lineHeight   = font.getLineHeight(),
-            fontWidth    = font.getMaxCharWidth(),
-            fontHeight   = font.getFontHeight(),
-            buttonWidth  = font.getStringWidth("Defaults") + 20,
-            buttonHeight = font.getLineHeight() + 4;
+            fontWidth    = font.getMaxCharWidth();
   int xpos, ypos;
   WidgetArray wid;
 
   // Set real dimensions
-  _w = 35 * fontWidth + 10;
-  _h = 11 * (lineHeight + 4) + 10;
-  xpos = ypos = 5;
+  _w = 33 * fontWidth + 10*2;
+  _h = 10 * (lineHeight + 4) + 10 + _th;
+  xpos = 10;
+  ypos = 10 + _th;
 
   // Get maximum width of popupwidget
   int pwidth = 0;
   for(const auto& s: combolist)
     pwidth = std::max(font.getStringWidth(s.first), pwidth);
-
-  // Label for dialog, indicating which combo is being changed
-  myComboName = new StaticTextWidget(this, font, xpos, ypos, _w - xpos - 10,
-                                     fontHeight, "", TextAlign::Center);
-  ypos += (lineHeight + 4) + 5;
 
   // Add event popup for 8 events
   auto ADD_EVENT_POPUP = [&](int idx, const string& label)
@@ -64,7 +57,6 @@ ComboDialog::ComboDialog(GuiObject* boss, const GUI::Font& font,
     ypos += lineHeight + 4;
   };
 
-  xpos = 10;
   myEvents[0] = nullptr;  ADD_EVENT_POPUP(0, "Event 1 ");
   myEvents[1] = nullptr;  ADD_EVENT_POPUP(1, "Event 2 ");
   myEvents[2] = nullptr;  ADD_EVENT_POPUP(2, "Event 3 ");
@@ -75,11 +67,7 @@ ComboDialog::ComboDialog(GuiObject* boss, const GUI::Font& font,
   myEvents[7] = nullptr;  ADD_EVENT_POPUP(7, "Event 8 ");
 
   // Add Defaults, OK and Cancel buttons
-  ButtonWidget* b;
-  b = new ButtonWidget(this, font, 10, _h - buttonHeight - 10,
-                       buttonWidth, buttonHeight, "Defaults", GuiObject::kDefaultsCmd);
-  wid.push_back(b);
-  addOKCancelBGroup(wid, font);
+  addDefaultsOKCancelBGroup(wid, font);
 
   addToFocusList(wid);
 }
@@ -91,7 +79,7 @@ void ComboDialog::show(Event::Type event, const string& name)
   if(event >= Event::Combo1 && event <= Event::Combo16)
   {
     myComboEvent = event;
-    myComboName->setLabel("Add events for " + name);
+    setTitle("Add events for " + name);
     open();
   }
   else
@@ -129,7 +117,7 @@ void ComboDialog::setDefaults()
   for(int i = 0; i < 8; ++i)
     myEvents[i]->setSelected("None", "-1");
 
-  _dirty = true;
+  setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

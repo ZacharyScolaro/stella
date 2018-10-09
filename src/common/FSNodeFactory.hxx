@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -40,19 +40,19 @@ class FilesystemNodeFactory
     enum Type { SYSTEM, ZIP };
 
   public:
-    static AbstractFSNode* create(const string& path, Type type)
+    static unique_ptr<AbstractFSNode> create(const string& path, Type type)
     {
       switch(type)
       {
         case SYSTEM:
       #if defined(BSPF_UNIX) || defined(BSPF_MAC_OSX)
-          return new FilesystemNodePOSIX(path);
+          return make_unique<FilesystemNodePOSIX>(path);
       #elif defined(BSPF_WINDOWS)
-          return new FilesystemNodeWINDOWS(path);
+          return make_unique<FilesystemNodeWINDOWS>(path);
       #endif
           break;
         case ZIP:
-          return new FilesystemNodeZIP(path);
+          return make_unique<FilesystemNodeZIP>(path);
           break;
       }
       return nullptr;

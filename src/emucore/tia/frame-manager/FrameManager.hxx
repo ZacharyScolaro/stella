@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -64,8 +64,6 @@ class FrameManager: public AbstractFrameManager {
 
     bool onLoad(Serializer& in) override;
 
-    string name() const override { return "TIA_FrameManager"; }
-
   private:
 
     enum State {
@@ -77,9 +75,7 @@ class FrameManager: public AbstractFrameManager {
 
   private:
 
-    void updateAutodetectedLayout();
-
-    void setState(State state);
+  void setState(State state);
 
     void updateIsRendering();
 
@@ -99,9 +95,6 @@ class FrameManager: public AbstractFrameManager {
     uInt32 myYStart;
 
     bool myJitterEnabled;
-
-    Int32 myStableFrameLines;
-    uInt8 myStableFrameHeightCountdown;
 
     JitterEmulation myJitterEmulation;
 

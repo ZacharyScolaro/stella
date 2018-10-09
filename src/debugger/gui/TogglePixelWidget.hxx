@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,12 +28,11 @@ class TogglePixelWidget : public ToggleWidget
                       int x, int y, int cols, int rows);
     virtual ~TogglePixelWidget() = default;
 
-    void setColor(int color) {
-      _pixelColor = (color >= 0 && color <= kNumColors) ? color : kDlgColor;
-    }
-    void setBackgroundColor(int color) {
-      _backgroundColor = (color >= 0 && color <= kNumColors) ? color : kDlgColor;
-    }
+    void setColor(ColorId color) { _pixelColor = color; }
+    void clearColor() { _pixelColor = kDlgColor; }
+    void setBackgroundColor(ColorId color) { _backgroundColor = color; }
+    void clearBackgroundColor() { _backgroundColor = kDlgColor; }
+
     void setState(const BoolArray& state);
 
     void setIntState(int value, bool swap);
@@ -42,7 +41,7 @@ class TogglePixelWidget : public ToggleWidget
     void setCrossed(bool enable) { _crossBits = enable; }
 
   private:
-    int  _pixelColor, _backgroundColor;
+    ColorId  _pixelColor, _backgroundColor;
     bool _swapBits;
     bool _crossBits;
 

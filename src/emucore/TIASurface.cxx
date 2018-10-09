@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -54,7 +54,7 @@ TIASurface::TIASurface(OSystem& system)
   // Base TIA surface for use in taking snapshots in 1x mode
   myBaseTiaSurface = myFB.allocateSurface(kTIAW*2, kTIAH);
 
-  memset(myRGBFramebuffer, 0, AtariNTSC::outWidth(kTIAW) * kTIAH);
+  memset(myRGBFramebuffer, 0, sizeof(myRGBFramebuffer));
 
   // Enable/disable threading in the NTSC TV effects renderer
   myNTSCFilter.enableThreading(myOSystem.settings().getBool("threads"));
@@ -138,10 +138,11 @@ const FBSurface& TIASurface::baseSurface(GUI::Rect& rect) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-uInt32 TIASurface::pixel(uInt32 idx, uInt8 shift)
+uInt32 TIASurface::mapIndexedPixel(uInt8 indexedColor, uInt8 shift)
 {
-  return myPalette[*(myTIA->frameBuffer() + idx) | shift];
+  return myPalette[indexedColor | shift];
 }
+
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIASurface::setNTSC(NTSCFilter::Preset preset, bool show)
@@ -205,7 +206,6 @@ uInt32 TIASurface::enableScanlines(int relative, int absolute)
   attr.blendalpha = std::min(100u, attr.blendalpha);
 
   mySLineSurface->applyAttributes();
-  mySLineSurface->setDirty();
 
   return attr.blendalpha;
 }
@@ -216,27 +216,27 @@ void TIASurface::enableScanlineInterpolation(bool enable)
   FBSurface::Attributes& attr = mySLineSurface->attributes();
   attr.smoothing = enable;
   mySLineSurface->applyAttributes();
-  mySLineSurface->setDirty();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void TIASurface::enablePhosphor(bool enable, int blend)
 {
+  if(myUsePhosphor == enable && myPhosphorPercent == blend / 100.0f)
+    return;
+
   myUsePhosphor = enable;
   if(blend >= 0)
-    myPhosphorPercent = blend / 100.0;
+    myPhosphorPercent = blend / 100.0f;
   myFilter = Filter(enable ? uInt8(myFilter) | 0x01 : uInt8(myFilter) & 0x10);
 
-  myTiaSurface->setDirty();
-  mySLineSurface->setDirty();
-  memset(myRGBFramebuffer, 0, AtariNTSC::outWidth(kTIAW) * kTIAH * 4);
+  memset(myRGBFramebuffer, 0, sizeof(myRGBFramebuffer));
 
   // Precalculate the average colors for the 'phosphor' effect
   if(myUsePhosphor)
   {
-    for(Int16 c = 255; c >= 0; c--)
-      for(Int16 p = 255; p >= 0; p--)
-        myPhosphorPalette[c][p] = getPhosphor(c, p);
+    for(int c = 255; c >= 0; c--)
+      for(int p = 255; p >= 0; p--)
+        myPhosphorPalette[c][p] = getPhosphor(uInt8(c), uInt8(p));
 
     myNTSCFilter.setPhosphorPalette(myPhosphorPalette);
   }
@@ -279,9 +279,7 @@ void TIASurface::enableNTSC(bool enable)
   sl_attr.blendalpha = myOSystem.settings().getInt("tv.scanlines");
   mySLineSurface->applyAttributes();
 
-  myTiaSurface->setDirty();
-  mySLineSurface->setDirty();
-  memset(myRGBFramebuffer, 0, AtariNTSC::outWidth(kTIAW) * kTIAH * 4);
+  memset(myRGBFramebuffer, 0, sizeof(myRGBFramebuffer));
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -352,9 +350,9 @@ void TIASurface::render()
         {
           // Store back into displayed frame buffer (for next frame)
           rgbIn[bufofs] = out[pos++] = getRGBPhosphor(myPalette[tiaIn[bufofs]], rgbIn[bufofs]);
-          bufofs++;
+          ++bufofs;
           rgbIn[bufofs] = out[pos++] = getRGBPhosphor(myPalette[tiaIn[bufofs]], rgbIn[bufofs]);
-          bufofs++;
+          ++bufofs;
         }
         screenofsY += outPitch;
       }
@@ -375,15 +373,11 @@ void TIASurface::render()
   }
 
   // Draw TIA image
-  myTiaSurface->setDirty();
   myTiaSurface->render();
 
   // Draw overlaying scanlines
   if(myScanlinesEnabled)
-  {
-    mySLineSurface->setDirty();
     mySLineSurface->render();
-  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -420,14 +414,10 @@ void TIASurface::reRender()
   if (myUsePhosphor)
   {
     // Draw TIA image
-    myTiaSurface->setDirty();
     myTiaSurface->render();
 
     // Draw overlaying scanlines
     if (myScanlinesEnabled)
-    {
-      mySLineSurface->setDirty();
       mySLineSurface->render();
-    }
   }
 }

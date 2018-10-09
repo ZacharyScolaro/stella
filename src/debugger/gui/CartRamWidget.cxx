@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -80,7 +80,6 @@ CartRamWidget::CartRamWidget(
   ypos += myDesc->getHeight() + myFontHeight / 2;
 
   // Add RAM widget
-  xpos = x + _font.getStringWidth("xxxx");
   myRam = new InternalRamWidget(boss, lfont, nfont, 2, ypos, w, h-ypos, cartDebug);
   addToFocusList(myRam->getFocusList());
 }
@@ -149,7 +148,7 @@ void CartRamWidget::InternalRamWidget::fillList(uInt32 start, uInt32 size,
   const ByteArray& oldRam = myCart.internalRamOld(start, size);
   const ByteArray& currRam = myCart.internalRamCurrent(start, size);
 
-  for(uInt32 i = 0; i < size; i++)
+  for(uInt32 i = 0; i < size; ++i)
   {
     alist.push_back(i+start);
     vlist.push_back(currRam[i]);

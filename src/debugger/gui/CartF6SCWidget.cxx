@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -34,7 +34,7 @@ CartridgeF6SCWidget::CartridgeF6SCWidget(
   info << "Standard F6SC cartridge, four 4K banks\n"
        << "128 bytes RAM @ $F000 - $F0FF\n"
        << "  $F080 - $F0FF (R), $F000 - $F07F (W)\n"
-       << "Startup bank = " << cart.myStartBank << " or undetermined\n";
+       << "Startup bank = " << cart.startBank() << " or undetermined\n";
 
   // Eventually, we should query this from the debugger/disassembler
   for(uInt32 i = 0, offset = 0xFFC, spot = 0xFF6; i < 4; ++i, offset += 0x1000)
@@ -66,16 +66,16 @@ void CartridgeF6SCWidget::saveOldState()
 {
   myOldState.internalram.clear();
 
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
-  {
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
-  }
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeF6SCWidget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   CartDebugWidget::loadConfig();
 }

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,7 +30,7 @@ CartridgeX07Widget::CartridgeX07Widget(
 
   ostringstream info;
   info << "64K X07 cartridge, 16 4K banks\n"
-       << "Startup bank = " << cart.myStartBank << "\n"
+       << "Startup bank = " << cart.startBank() << "\n"
        << "Multiple hotspots, all below $1000\n"
        << "See documentation for further details\n";
 
@@ -75,7 +75,12 @@ CartridgeX07Widget::CartridgeX07Widget(
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeX07Widget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.myCurrentBank);
+  Debugger& dbg = instance().debugger();
+  CartDebug& cart = dbg.cartDebug();
+  const CartState& state = static_cast<const CartState&>(cart.getState());
+  const CartState& oldstate = static_cast<const CartState&>(cart.getOldState());
+
+  myBank->setSelectedIndex(myCart.getBank(), state.bank != oldstate.bank);
 
   CartDebugWidget::loadConfig();
 }

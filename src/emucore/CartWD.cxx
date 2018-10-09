@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -32,21 +32,19 @@ CartridgeWD::CartridgeWD(const BytePtr& image, uInt32 size,
   // Copy the ROM image into my buffer
   memcpy(myImage, image.get(), mySize);
   createCodeAccessBase(8192);
-
-  // Remember startup bank
-  myStartBank = 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeWD::reset()
 {
   initializeRAM(myRAM, 64);
+  initializeStartBank(0);
 
   myCyclesAtBankswitchInit = 0;
   myPendingBank = 0xF0;  // one more than the allowable bank #
 
   // Setup segments to some default slices
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -77,7 +75,7 @@ void CartridgeWD::install(System& system)
   mySystem->tia().installDelegate(system, *this);
 
   // Setup segments to some default slices
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -266,7 +264,6 @@ bool CartridgeWD::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putShort(myCurrentBank);
     out.putByteArray(myRAM, 64);
     out.putLong(myCyclesAtBankswitchInit);
@@ -286,9 +283,6 @@ bool CartridgeWD::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myCurrentBank = in.getShort();
     in.getByteArray(myRAM, 64);
     myCyclesAtBankswitchInit = in.getLong();

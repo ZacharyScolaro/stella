@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -22,7 +22,8 @@
 Playfield::Playfield(uInt32 collisionMask)
   : myCollisionMaskDisabled(collisionMask),
     myCollisionMaskEnabled(0xFFFF),
-    myIsSuppressed(false)
+    myIsSuppressed(false),
+    myTIA(nullptr)
 {
   reset();
 }
@@ -38,9 +39,11 @@ void Playfield::reset()
   myPf1 = 0;
   myPf2 = 0;
 
+  myX = 0;
+
   myObjectColor = myDebugColor = 0;
-  myColorP0 = 0;
-  myColorP1 = 0;
+  myColorLeft = myColorRight = 0;
+  myColorP0 = myColorP1 = 0;
   myColorMode = ColorMode::normal;
   myDebugEnabled = false;
 
@@ -205,6 +208,12 @@ void Playfield::tick(uInt32 x)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Playfield::nextLine()
+{
+  collision = myCollisionMaskDisabled;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Playfield::applyColors()
 {
   if (myDebugEnabled)
@@ -284,8 +293,6 @@ bool Playfield::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     out.putInt(collision);
     out.putInt(myCollisionMaskDisabled);
     out.putInt(myCollisionMaskEnabled);
@@ -327,9 +334,6 @@ bool Playfield::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     collision = in.getInt();
     myCollisionMaskDisabled = in.getInt();
     myCollisionMaskEnabled = in.getInt();

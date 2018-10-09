@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -21,6 +21,8 @@
 #include "bspf.hxx"
 #include "Sound.hxx"
 #include "OSystem.hxx"
+#include "AudioQueue.hxx"
+#include "EmulationTiming.hxx"
 
 /**
   This class implements a Null sound object, where-by sound generation
@@ -35,7 +37,7 @@ class SoundNull : public Sound
       Create a new sound object.  The init method must be invoked before
       using the object.
     */
-    SoundNull(OSystem& osystem) : Sound(osystem)
+    explicit SoundNull(OSystem& osystem) : Sound(osystem)
     {
       myOSystem.logMessage("Sound disabled.\n", 1);
     }
@@ -54,25 +56,10 @@ class SoundNull : public Sound
     void setEnabled(bool state) override { }
 
     /**
-      Sets the number of channels (mono or stereo sound).
-
-      @param channels The number of channels
-    */
-    void setChannels(uInt32 channels) override { }
-
-    /**
-      Sets the display framerate.  Sound generation for NTSC and PAL games
-      depends on the framerate, so we need to set it here.
-
-      @param framerate The base framerate depending on NTSC or PAL ROM
-    */
-    void setFrameRate(float framerate) override { }
-
-    /**
       Initializes the sound device.  This must be called before any
       calls are made to derived methods.
     */
-    void open() override { }
+    void open(shared_ptr<AudioQueue>, EmulationTiming*) override { }
 
     /**
       Should be called to close the sound device.  Once called the sound
@@ -84,22 +71,10 @@ class SoundNull : public Sound
       Set the mute state of the sound object.  While muted no sound is played.
 
       @param state Mutes sound if true, unmute if false
-    */
-    void mute(bool state) override { }
 
-    /**
-      Reset the sound device.
+      @return  The previous (old) mute state
     */
-    void reset() override { }
-
-    /**
-      Sets the sound register to a given value.
-
-      @param addr  The register address
-      @param value The value to save into the register
-      @param cycle The system cycle at which the register is being updated
-    */
-    void set(uInt16 addr, uInt8 value, uInt64 cycle) override { }
+    bool mute(bool state) override { return true; }
 
     /**
       Sets the volume of the sound device to the specified level.  The
@@ -108,7 +83,7 @@ class SoundNull : public Sound
 
       @param percent The new volume percentage level for the sound device
     */
-    void setVolume(Int32 percent) override { }
+    void setVolume(uInt32 percent) override { }
 
     /**
       Adjusts the volume of the sound device based on the given direction.
@@ -118,53 +93,10 @@ class SoundNull : public Sound
     */
     void adjustVolume(Int8 direction) override { }
 
-  public:
     /**
-      Saves the current state of this device to the given Serializer.
-
-      @param out The serializer device to save to.
-      @return The result of the save.  True on success, false on failure.
+      This method is called to provide information about the sound device.
     */
-    bool save(Serializer& out) const override
-    {
-      out.putString("TIASound");
-
-      for(int i = 0; i < 6; ++i)
-        out.putByte(0);
-
-      // myLastRegisterSetCycle
-      out.putInt(0);
-
-      return true;
-    }
-
-    /**
-      Loads the current state of this device from the given Serializer.
-
-      @param in The Serializer device to load from.
-      @return The result of the load.  True on success, false on failure.
-    */
-    bool load(Serializer& in) override
-    {
-      if(in.getString() != "TIASound")
-        return false;
-
-      // Read sound registers and discard
-      for(int i = 0; i < 6; ++i)
-        in.getByte();
-
-      // myLastRegisterSetCycle
-      in.getInt();
-
-      return true;
-    }
-
-    /**
-      Get a descriptor for this console class (used in error checking).
-
-      @return The name of the object
-    */
-    string name() const override { return "TIASound"; }
+    string about() const override { return "Sound disabled"; }
 
   private:
     // Following constructors and assignment operators not supported

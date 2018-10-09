@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -55,7 +55,7 @@ class FilesystemNodeWINDOWS : public AbstractFSNode
      *
      * @param path String with the path the new node should point to.
      */
-    FilesystemNodeWINDOWS(const string& path);
+    explicit FilesystemNodeWINDOWS(const string& path);
 
     bool exists() const override;
     const string& getName() const override   { return _displayName; }
@@ -69,7 +69,7 @@ class FilesystemNodeWINDOWS : public AbstractFSNode
     bool rename(const string& newfile) override;
 
     bool getChildren(AbstractFSList& list, ListMode mode, bool hidden) const override;
-    AbstractFSNode* getParent() const override;
+    AbstractFSNodePtr getParent() const override;
 
   protected:
     string _displayName;

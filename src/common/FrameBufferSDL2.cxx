@@ -8,14 +8,12 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
 // this file, and for a DISCLAIMER OF ALL WARRANTIES.
 //============================================================================
-
-#include <ctime>
 
 #include "SDL_lib.hxx"
 #include "bspf.hxx"
@@ -32,8 +30,7 @@
 FrameBufferSDL2::FrameBufferSDL2(OSystem& osystem)
   : FrameBuffer(osystem),
     myWindow(nullptr),
-    myRenderer(nullptr),
-    myDirtyFlag(true)
+    myRenderer(nullptr)
 {
   // Initialize SDL2 context
   if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_JOYSTICK) < 0)
@@ -59,6 +56,12 @@ FrameBufferSDL2::~FrameBufferSDL2()
 
   if(myRenderer)
   {
+    // Make sure to free surfaces/textures before destroying the renderer itself
+    // Most platforms are fine with doing this in either order, but it seems
+    // that OpenBSD in particular crashes when attempting to destroy textures
+    // *after* the renderer is already destroyed
+    freeSurfaces();
+
     SDL_DestroyRenderer(myRenderer);
     myRenderer = nullptr;
   }
@@ -84,15 +87,42 @@ void FrameBufferSDL2::queryHardware(vector<GUI::Size>& displays,
     displays.emplace_back(display.w, display.h);
   }
 
-  // For now, supported render types are hardcoded; eventually, SDL may
-  // provide a method to query this
-#if defined(BSPF_WINDOWS)
-  VarList::push_back(renderers, "Direct3D", "direct3d");
-#endif
-  VarList::push_back(renderers, "OpenGL", "opengl");
-  VarList::push_back(renderers, "OpenGLES2", "opengles2");
-  VarList::push_back(renderers, "OpenGLES", "opengles");
-  VarList::push_back(renderers, "Software", "software");
+  struct RenderName
+  {
+    string sdlName;
+    string stellaName;
+  };
+  // Create name map for all currently known SDL renderers
+  const int NUM_RENDERERS = 5;
+  static const RenderName RENDERER_NAMES[NUM_RENDERERS] = {
+    { "direct3d",  "Direct3D"  },
+    { "opengl",    "OpenGL"    },
+    { "opengles",  "OpenGLES"  },
+    { "opengles2", "OpenGLES2" },
+    { "software",  "Software"  }
+  };
+
+  int numDrivers = SDL_GetNumRenderDrivers();
+  for(int i = 0; i < numDrivers; ++i)
+  {
+    SDL_RendererInfo info;
+    if(SDL_GetRenderDriverInfo(i, &info) == 0)
+    {
+      // Map SDL names into nicer Stella names (if available)
+      bool found = false;
+      for(int j = 0; j < NUM_RENDERERS; ++j)
+      {
+        if(RENDERER_NAMES[j].sdlName == info.name)
+        {
+          VarList::push_back(renderers, RENDERER_NAMES[j].stellaName, info.name);
+          found = true;
+          break;
+        }
+      }
+      if(!found)
+        VarList::push_back(renderers, info.name, info.name);
+    }
+  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -111,10 +141,6 @@ bool FrameBufferSDL2::setVideoMode(const string& title, const VideoMode& mode)
   // Always recreate renderer (some systems need this)
   if(myRenderer)
   {
-    // Always clear the (double-buffered) renderer surface
-    SDL_RenderClear(myRenderer);
-    SDL_RenderPresent(myRenderer);
-    SDL_RenderClear(myRenderer);
     SDL_DestroyRenderer(myRenderer);
     myRenderer = nullptr;
   }
@@ -201,11 +227,26 @@ bool FrameBufferSDL2::setVideoMode(const string& title, const VideoMode& mode)
     myOSystem.logMessage(msg, 0);
     return false;
   }
+
+  // Always clear the (double-buffered) renderer surface
+  SDL_RenderClear(myRenderer);
+  SDL_RenderPresent(myRenderer);
+  SDL_RenderClear(myRenderer);
+
   SDL_RendererInfo renderinfo;
   if(SDL_GetRendererInfo(myRenderer, &renderinfo) >= 0)
     myOSystem.settings().setValue("video", renderinfo.name);
 
   return true;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void FrameBufferSDL2::setTitle(const string& title)
+{
+  myScreenTitle = title;
+
+  if(myWindow)
+    SDL_SetWindowTitle(myWindow, title.c_str());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -231,7 +272,6 @@ string FrameBufferSDL2::about() const
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void FrameBufferSDL2::invalidate()
 {
-  myDirtyFlag = true;
   SDL_RenderClear(myRenderer);
 }
 
@@ -258,14 +298,10 @@ bool FrameBufferSDL2::fullScreen() const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void FrameBufferSDL2::postFrameUpdate()
+void FrameBufferSDL2::renderToScreen()
 {
-  if(myDirtyFlag)
-  {
-    // Now show all changes made to the renderer
-    SDL_RenderPresent(myRenderer);
-    myDirtyFlag = false;
-  }
+  // Show all changes made to the renderer
+  SDL_RenderPresent(myRenderer);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -282,8 +318,8 @@ void FrameBufferSDL2::setWindowIcon()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-unique_ptr<FBSurface> FrameBufferSDL2::createSurface(uInt32 w, uInt32 h,
-                                          const uInt32* data) const
+unique_ptr<FBSurface>
+    FrameBufferSDL2::createSurface(uInt32 w, uInt32 h, const uInt32* data) const
 {
   return make_unique<FBSurfaceSDL2>(const_cast<FrameBufferSDL2&>(*this), w, h, data);
 }
@@ -303,5 +339,5 @@ void FrameBufferSDL2::readPixels(uInt8* pixels, uInt32 pitch,
 void FrameBufferSDL2::clear()
 {
   invalidate();
-  postFrameUpdate();
+  renderToScreen();
 }

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,13 +26,14 @@
 #include "DialogContainer.hxx"
 #include "Event.hxx"
 #include "FrameBuffer.hxx"
-#include "TIASurface.hxx"
 #include "FSNode.hxx"
 #include "Launcher.hxx"
+#include "TimeMachine.hxx"
 #include "Menu.hxx"
 #include "OSystem.hxx"
 #include "Joystick.hxx"
 #include "Paddles.hxx"
+#include "PJoystickHandler.hxx"
 #include "PointingDevice.hxx"
 #include "PropsSet.hxx"
 #include "ListWidget.hxx"
@@ -40,11 +41,11 @@
 #include "Settings.hxx"
 #include "Sound.hxx"
 #include "StateManager.hxx"
+#include "TimerManager.hxx"
 #include "Switches.hxx"
 #include "M6532.hxx"
 #include "MouseControl.hxx"
 #include "PNGLibrary.hxx"
-#include "Version.hxx"
 
 #include "EventHandler.hxx"
 
@@ -60,28 +61,22 @@
 EventHandler::EventHandler(OSystem& osystem)
   : myOSystem(osystem),
     myOverlay(nullptr),
-    myState(S_NONE),
+    myState(EventHandlerState::NONE),
     myAllowAllDirectionsFlag(false),
     myFryingFlag(false),
-    myUseCtrlKeyFlag(true),
     mySkipMouseMotion(true),
-    myIs7800(false),
-    myAltKeyCounter(0),
-    myContSnapshotInterval(0),
-    myContSnapshotCounter(0)
+    myIs7800(false)
 {
-  // Erase the key mapping array
-  for(int i = 0; i < KBDK_LAST; ++i)
-    for(int m = 0; m < kNumModes; ++m)
-      myKeyTable[i][m] = Event::NoType;
+  // Create keyboard handler (to handle all physical keyboard functionality)
+  myPKeyHandler = make_unique<PhysicalKeyboardHandler>(osystem, *this, myEvent);
+
+  // Create joystick handler (to handle all physical joystick functionality)
+  myPJoyHandler = make_unique<PhysicalJoystickHandler>(osystem, *this, myEvent);
 
   // Erase the 'combo' array
   for(int i = 0; i < kComboSize; ++i)
     for(int j = 0; j < kEventsPerCombo; ++j)
       myComboTable[i][j] = Event::NoType;
-
-  // Create joystick handler (to handle all joystick functionality)
-  myJoyHandler = make_unique<JoystickHandler>(osystem);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -94,12 +89,9 @@ void EventHandler::initialize()
 {
   // Make sure the event/action mappings are correctly set,
   // and fill the ActionList structure with valid values
-  setKeymap();
   setComboMap();
   setActionMappings(kEmulationMode);
   setActionMappings(kMenuMode);
-
-  myUseCtrlKeyFlag = myOSystem.settings().getBool("ctrlcombo");
 
   Joystick::setDeadZone(myOSystem.settings().getInt("joydeadzone"));
   Paddles::setDigitalSensitivity(myOSystem.settings().getInt("dsense"));
@@ -124,49 +116,42 @@ void EventHandler::initialize()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::reset(State state)
+void EventHandler::reset(EventHandlerState state)
 {
-  setEventState(state);
+  setState(state);
   myOSystem.state().reset();
+  myOSystem.png().setContinuousSnapInterval(0);
 
-  setContinuousSnapshots(0);
+  // Reset events almost immediately after starting emulation mode
+  // We wait a little while (0.5s), since 'hold' events may be present,
+  // and we want time for the ROM to process them
+  if(state == EventHandlerState::EMULATION)
+    myOSystem.timer().setTimeout([&ev = myEvent]() { ev.clear(); }, 500);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::addJoystick(StellaJoystick* stick)
+void EventHandler::addPhysicalJoystick(PhysicalJoystickPtr joy)
 {
 #ifdef JOYSTICK_SUPPORT
-  if(!myJoyHandler->add(stick))
+  int ID = myPJoyHandler->add(joy);
+  if(ID < 0)
     return;
 
   setActionMappings(kEmulationMode);
   setActionMappings(kMenuMode);
 
   ostringstream buf;
-  buf << "Added joystick " << stick->ID << ":" << endl
-      << "  " << stick->about() << endl;
+  buf << "Added joystick " << ID << ":" << endl
+      << "  " << joy->about() << endl;
   myOSystem.logMessage(buf.str(), 1);
-
-  // We're potentially swapping out an input device behind the back of
-  // the Event system, so we make sure all Stelladaptor-generated events
-  // are reset
-  for(int i = 0; i < 2; ++i)
-  {
-    for(int j = 0; j < 2; ++j)
-      myEvent.set(SA_Axis[i][j], 0);
-    for(int j = 0; j < 4; ++j)
-      myEvent.set(SA_Button[i][j], 0);
-    for(int j = 0; j < 12; ++j)
-      myEvent.set(SA_Key[i][j], 0);
-  }
 #endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::removeJoystick(int id)
+void EventHandler::removePhysicalJoystick(int id)
 {
 #ifdef JOYSTICK_SUPPORT
-  myJoyHandler->remove(id);
+  myPJoyHandler->remove(id);
 #endif
 }
 
@@ -174,7 +159,7 @@ void EventHandler::removeJoystick(int id)
 void EventHandler::mapStelladaptors(const string& saport)
 {
 #ifdef JOYSTICK_SUPPORT
-  myJoyHandler->mapStelladaptors(saport);
+  myPJoyHandler->mapStelladaptors(saport);
 #endif
 }
 
@@ -200,9 +185,16 @@ void EventHandler::toggleSAPortOrder()
 void EventHandler::set7800Mode()
 {
   if(myOSystem.hasConsole())
-    myIs7800 = myOSystem.console().switches().toggle7800Mode(myOSystem.settings());
+    myIs7800 = myOSystem.console().switches().check7800Mode(myOSystem.settings());
   else
     myIs7800 = false;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::handleMouseControl()
+{
+  if(myMouseControl)
+    myOSystem.frameBuffer().showMessage(myMouseControl->next());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -213,7 +205,7 @@ void EventHandler::poll(uInt64 time)
 
   // Update controllers and console switches, and in general all other things
   // related to emulation
-  if(myState == S_EMULATE)
+  if(myState == EventHandlerState::EMULATION)
   {
     myOSystem.console().riot().update();
 
@@ -228,9 +220,8 @@ void EventHandler::poll(uInt64 time)
   #endif
 
     // Handle continuous snapshots
-    if(myContSnapshotInterval > 0 &&
-      (++myContSnapshotCounter % myContSnapshotInterval == 0))
-      takeSnapshot(uInt32(time) >> 10);  // not quite milliseconds, but close enough
+    if(myOSystem.png().continuousSnapEnabled())
+      myOSystem.png().updateTime(time);
   }
   else if(myOverlay)
   {
@@ -254,403 +245,10 @@ void EventHandler::handleTextEvent(char text)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleKeyEvent(StellaKey key, StellaMod mod, bool state)
-{
-  // Swallow KBDK_TAB under certain conditions
-  // See commments on 'myAltKeyCounter' for more information
-#ifdef BSPF_UNIX
-  if(myAltKeyCounter > 1 && key == KBDK_TAB)
-  {
-    myAltKeyCounter = false;
-    return;
-  }
-#endif
-
-  bool handled = true;
-
-  // Immediately store the key state
-  myEvent.setKey(key, state);
-
-  // An attempt to speed up event processing; we quickly check for
-  // Control or Alt/Cmd combos first
-  if(kbdAlt(mod) && state)
-  {
-#ifdef BSPF_MAC_OSX
-    // These keys work in all states
-    if(key == KBDK_Q)
-    {
-      handleEvent(Event::Quit, 1);
-    }
-    else
-#endif
-    if(key == KBDK_TAB)
-    {
-      // Swallow Alt-Tab, but remember that it happened
-      myAltKeyCounter = 1;
-      return;
-    }
-    else if(key == KBDK_RETURN)
-    {
-      myOSystem.frameBuffer().toggleFullscreen();
-    }
-    // state rewinding must work in pause mode too
-    else if(myState == S_EMULATE || myState == S_PAUSE)
-    {
-      switch(key)
-      {
-        case KBDK_LEFT:  // Alt-left(-shift) rewinds 1(10) states
-          myOSystem.frameBuffer().setPauseDelay();
-          setEventState(S_PAUSE);
-          myOSystem.state().rewindState((kbdShift(mod) && state) ? 10 : 1);
-          break;
-
-        case KBDK_RIGHT:  // Alt-right(-shift) unwinds 1(10) states
-          myOSystem.frameBuffer().setPauseDelay();
-          setEventState(S_PAUSE);
-          myOSystem.state().unwindState((kbdShift(mod) && state) ? 10 : 1);
-          break;
-
-        case KBDK_DOWN:  // Alt-down rewinds to start of list
-          myOSystem.frameBuffer().setPauseDelay();
-          setEventState(S_PAUSE);
-          myOSystem.state().rewindState(1000);
-          break;
-
-        case KBDK_UP:  // Alt-up rewinds to end of list
-          myOSystem.frameBuffer().setPauseDelay();
-          setEventState(S_PAUSE);
-          myOSystem.state().unwindState(1000);
-          break;
-
-        default:
-          handled = false;
-          break;
-      }
-    }
-    // These only work when in emulation mode
-    if(!handled && myState == S_EMULATE)
-    {
-      handled = true;
-      switch(key)
-      {
-        case KBDK_EQUALS:
-          myOSystem.frameBuffer().changeWindowedVidMode(+1);
-          break;
-
-        case KBDK_MINUS:
-          myOSystem.frameBuffer().changeWindowedVidMode(-1);
-          break;
-
-        case KBDK_LEFTBRACKET:
-          myOSystem.sound().adjustVolume(-1);
-          break;
-
-        case KBDK_RIGHTBRACKET:
-          myOSystem.sound().adjustVolume(+1);
-          break;
-
-        case KBDK_PAGEUP:    // Alt-PageUp increases YStart
-          myOSystem.console().changeYStart(+1);
-          break;
-
-        case KBDK_PAGEDOWN:  // Alt-PageDown decreases YStart
-          myOSystem.console().changeYStart(-1);
-          break;
-
-        case KBDK_1:  // Alt-1 turns off NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_OFF);
-          break;
-
-        case KBDK_2:  // Alt-2 turns on 'composite' NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_COMPOSITE);
-          break;
-
-        case KBDK_3:  // Alt-3 turns on 'svideo' NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_SVIDEO);
-          break;
-
-        case KBDK_4:  // Alt-4 turns on 'rgb' NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_RGB);
-          break;
-
-        case KBDK_5:  // Alt-5 turns on 'bad' NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_BAD);
-          break;
-
-        case KBDK_6:  // Alt-6 turns on 'custom' NTSC filtering
-          myOSystem.frameBuffer().tiaSurface().setNTSC(NTSCFilter::PRESET_CUSTOM);
-          break;
-
-        case KBDK_7:  // Alt-7 changes scanline intensity for NTSC filtering
-          if(mod & KBDM_SHIFT)
-            myOSystem.frameBuffer().tiaSurface().setScanlineIntensity(-5);
-          else
-            myOSystem.frameBuffer().tiaSurface().setScanlineIntensity(+5);
-          break;
-
-        case KBDK_8:  // Alt-8 turns toggles scanline interpolation
-          myOSystem.frameBuffer().tiaSurface().toggleScanlineInterpolation();
-          break;
-
-        case KBDK_9:  // Alt-9 selects various custom adjustables for NTSC filtering
-          if(myOSystem.frameBuffer().tiaSurface().ntscEnabled())
-          {
-            if(mod & KBDM_SHIFT)
-              myOSystem.frameBuffer().showMessage(
-                  myOSystem.frameBuffer().tiaSurface().ntsc().setPreviousAdjustable());
-            else
-              myOSystem.frameBuffer().showMessage(
-                  myOSystem.frameBuffer().tiaSurface().ntsc().setNextAdjustable());
-          }
-          break;
-
-        case KBDK_0:  // Alt-0 changes custom adjustables for NTSC filtering
-          if(myOSystem.frameBuffer().tiaSurface().ntscEnabled())
-          {
-            if(mod & KBDM_SHIFT)
-              myOSystem.frameBuffer().showMessage(
-                  myOSystem.frameBuffer().tiaSurface().ntsc().decreaseAdjustable());
-            else
-              myOSystem.frameBuffer().showMessage(
-                  myOSystem.frameBuffer().tiaSurface().ntsc().increaseAdjustable());
-          }
-          break;
-
-        case KBDK_Z:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleP0Collision();
-          else
-            myOSystem.console().toggleP0Bit();
-          break;
-
-        case KBDK_X:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleP1Collision();
-          else
-              myOSystem.console().toggleP1Bit();
-          break;
-
-        case KBDK_C:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleM0Collision();
-          else
-            myOSystem.console().toggleM0Bit();
-          break;
-
-        case KBDK_V:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleM1Collision();
-          else
-            myOSystem.console().toggleM1Bit();
-          break;
-
-        case KBDK_B:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleBLCollision();
-          else
-            myOSystem.console().toggleBLBit();
-          break;
-
-        case KBDK_N:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().togglePFCollision();
-          else
-            myOSystem.console().togglePFBit();
-          break;
-
-        case KBDK_COMMA:
-          myOSystem.console().toggleFixedColors();
-          break;
-
-        case KBDK_PERIOD:
-          if(mod & KBDM_SHIFT)
-            myOSystem.console().toggleCollisions();
-          else
-            myOSystem.console().toggleBits();
-          break;
-
-        case KBDK_I:  // Alt-i decreases phosphor blend
-          myOSystem.console().changePhosphor(-1);
-          break;
-
-        case KBDK_O:  // Alt-o increases phosphor blend
-          myOSystem.console().changePhosphor(+1);
-          break;
-
-        case KBDK_P:  // Alt-p toggles phosphor effect
-          myOSystem.console().togglePhosphor();
-          break;
-
-        case KBDK_J:  // Alt-j toggles scanline jitter
-          myOSystem.console().toggleJitter();
-          break;
-
-        case KBDK_L:
-          myOSystem.frameBuffer().toggleFrameStats();
-          break;
-
-        case KBDK_T:  // Alt-t toggles Time Machine
-          myOSystem.state().toggleTimeMachine();
-          break;
-
-        case KBDK_S:
-          if(myContSnapshotInterval == 0)
-          {
-            ostringstream buf;
-            uInt32 interval = myOSystem.settings().getInt("ssinterval");
-            if(mod & KBDM_SHIFT)
-            {
-              buf << "Enabling snapshots every frame";
-              interval = 1;
-            }
-            else
-            {
-              buf << "Enabling snapshots in " << interval << " second intervals";
-              interval *= uInt32(myOSystem.frameRate());
-            }
-            myOSystem.frameBuffer().showMessage(buf.str());
-            setContinuousSnapshots(interval);
-          }
-          else
-          {
-            ostringstream buf;
-            buf << "Disabling snapshots, generated "
-                << (myContSnapshotCounter / myContSnapshotInterval)
-                << " files";
-            myOSystem.frameBuffer().showMessage(buf.str());
-            setContinuousSnapshots(0);
-          }
-          break;
-
-        default:
-          handled = false;
-          break;
-      }
-    }
-    else
-      handled = false;
-  }
-  else if(kbdControl(mod) && state && myUseCtrlKeyFlag)
-  {
-    // These keys work in all states
-    if(key == KBDK_Q)
-    {
-      handleEvent(Event::Quit, 1);
-    }
-    // These only work when in emulation mode
-    else if(myState == S_EMULATE)
-    {
-      switch(key)
-      {
-        case KBDK_0:  // Ctrl-0 switches between mouse control modes
-          if(myMouseControl)
-            myOSystem.frameBuffer().showMessage(myMouseControl->next());
-          break;
-
-        case KBDK_1:  // Ctrl-1 swaps Stelladaptor/2600-daptor ports
-          toggleSAPortOrder();
-          break;
-
-        case KBDK_F:  // (Shift) Ctrl-f toggles NTSC/PAL/SECAM mode
-          myOSystem.console().toggleFormat(mod & KBDM_SHIFT ? -1 : 1);
-          break;
-
-        case KBDK_G:  // Ctrl-g (un)grabs mouse
-          if(!myOSystem.frameBuffer().fullScreen())
-          {
-            myOSystem.frameBuffer().toggleGrabMouse();
-            myOSystem.frameBuffer().showMessage(myOSystem.frameBuffer().grabMouseEnabled()
-                                                ? "Grab mouse enabled" : "Grab mouse disabled");
-          }
-          break;
-
-        case KBDK_L:  // Ctrl-l toggles PAL color-loss effect
-          myOSystem.console().toggleColorLoss();
-          break;
-
-        case KBDK_P:  // Ctrl-p toggles different palettes
-          myOSystem.console().togglePalette();
-          break;
-
-        case KBDK_R:  // Ctrl-r reloads the currently loaded ROM
-          myOSystem.reloadConsole();
-          break;
-
-        case KBDK_PAGEUP:    // Ctrl-PageUp increases Height
-          myOSystem.console().changeHeight(+1);
-          break;
-
-        case KBDK_PAGEDOWN:  // Ctrl-PageDown decreases Height
-          myOSystem.console().changeHeight(-1);
-          break;
-
-        case KBDK_S:         // Ctrl-s saves properties to a file
-        {
-          string filename = myOSystem.baseDir() +
-              myOSystem.console().properties().get(Cartridge_Name) + ".pro";
-          ofstream out(filename);
-          if(out)
-          {
-            out << myOSystem.console().properties();
-            myOSystem.frameBuffer().showMessage("Properties saved");
-          }
-          else
-            myOSystem.frameBuffer().showMessage("Error saving properties");
-          break;
-        }
-
-        default:
-          handled = false;
-          break;
-      }
-    }
-    else
-      handled = false;
-  }
-  else
-    handled = false;
-
-  // Don't pass the key on if we've already taken care of it
-  if(handled) return;
-
-  // Handle keys which switch eventhandler state
-  // Arrange the logic to take advantage of short-circuit evaluation
-  if(!(kbdControl(mod) || kbdShift(mod) || kbdAlt(mod)) &&
-      !state && eventStateChange(myKeyTable[key][kEmulationMode]))
-    return;
-
-  // Otherwise, let the event handler deal with it
-  switch(myState)
-  {
-    case S_EMULATE:
-      handleEvent(myKeyTable[key][kEmulationMode], state);
-      break;
-
-    case S_PAUSE:
-      switch(myKeyTable[key][kEmulationMode])
-      {
-        case Event::TakeSnapshot:
-        case Event::DebuggerMode:
-          handleEvent(myKeyTable[key][kEmulationMode], state);
-          break;
-
-        default:
-          break;
-      }
-      break;
-
-    default:
-      if(myOverlay)
-        myOverlay->handleKeyEvent(key, mod, state);
-      break;
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleMouseMotionEvent(int x, int y, int xrel, int yrel, int button)
+void EventHandler::handleMouseMotionEvent(int x, int y, int xrel, int yrel)
 {
   // Determine which mode we're in, then send the event to the appropriate place
-  if(myState == S_EMULATE)
+  if(myState == EventHandlerState::EMULATION)
   {
     if(!mySkipMouseMotion)
     {
@@ -660,240 +258,30 @@ void EventHandler::handleMouseMotionEvent(int x, int y, int xrel, int yrel, int 
     mySkipMouseMotion = false;
   }
   else if(myOverlay)
-    myOverlay->handleMouseMotionEvent(x, y, button);
+    myOverlay->handleMouseMotionEvent(x, y);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleMouseButtonEvent(MouseButton b, int x, int y)
+void EventHandler::handleMouseButtonEvent(MouseButton b, bool pressed,
+                                          int x, int y)
 {
   // Determine which mode we're in, then send the event to the appropriate place
-  if(myState == S_EMULATE)
+  if(myState == EventHandlerState::EMULATION)
   {
     switch(b)
     {
-      case MouseButton::LBUTTONDOWN:
-        myEvent.set(Event::MouseButtonLeftValue, 1);
+      case MouseButton::LEFT:
+        myEvent.set(Event::MouseButtonLeftValue, int(pressed));
         break;
-      case MouseButton::LBUTTONUP:
-        myEvent.set(Event::MouseButtonLeftValue, 0);
-        break;
-      case MouseButton::RBUTTONDOWN:
-        myEvent.set(Event::MouseButtonRightValue, 1);
-        break;
-      case MouseButton::RBUTTONUP:
-        myEvent.set(Event::MouseButtonRightValue, 0);
+      case MouseButton::RIGHT:
+        myEvent.set(Event::MouseButtonRightValue, int(pressed));
         break;
       default:
         return;
     }
   }
   else if(myOverlay)
-    myOverlay->handleMouseButtonEvent(b, x, y);
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleJoyEvent(int stick, int button, uInt8 state)
-{
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(!joy)  return;
-
-  // Stelladaptors handle buttons differently than regular joysticks
-  switch(joy->type)
-  {
-    case StellaJoystick::JT_REGULAR:
-      // Handle buttons which switch eventhandler state
-      if(state && eventStateChange(joy->btnTable[button][kEmulationMode]))
-        return;
-
-      // Determine which mode we're in, then send the event to the appropriate place
-      if(myState == S_EMULATE)
-        handleEvent(joy->btnTable[button][kEmulationMode], state);
-      else if(myOverlay)
-        myOverlay->handleJoyEvent(stick, button, state);
-      break;  // Regular button
-
-    // These events don't have to pass through handleEvent, since
-    // they can never be remapped
-    case StellaJoystick::JT_STELLADAPTOR_LEFT:
-    case StellaJoystick::JT_STELLADAPTOR_RIGHT:
-      // The 'type-2' here refers to the fact that 'StellaJoystick::JT_STELLADAPTOR_LEFT'
-      // and 'StellaJoystick::JT_STELLADAPTOR_RIGHT' are at index 2 and 3 in the JoyType
-      // enum; subtracting two gives us Controller 0 and 1
-      if(button < 2) myEvent.set(SA_Button[joy->type-2][button], state);
-      break;  // Stelladaptor button
-    case StellaJoystick::JT_2600DAPTOR_LEFT:
-    case StellaJoystick::JT_2600DAPTOR_RIGHT:
-      // The 'type-4' here refers to the fact that 'StellaJoystick::JT_2600DAPTOR_LEFT'
-      // and 'StellaJoystick::JT_2600DAPTOR_RIGHT' are at index 4 and 5 in the JoyType
-      // enum; subtracting four gives us Controller 0 and 1
-      if(myState == S_EMULATE)
-      {
-        switch(myOSystem.console().leftController().type())
-        {
-          case Controller::Keyboard:
-            if(button < 12) myEvent.set(SA_Key[joy->type-4][button], state);
-            break;
-          default:
-            if(button < 4) myEvent.set(SA_Button[joy->type-4][button], state);
-        }
-        switch(myOSystem.console().rightController().type())
-        {
-          case Controller::Keyboard:
-            if(button < 12) myEvent.set(SA_Key[joy->type-4][button], state);
-            break;
-          default:
-            if(button < 4) myEvent.set(SA_Button[joy->type-4][button], state);
-        }
-      }
-      break;  // 2600DAPTOR button
-    default:
-      break;
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleJoyAxisEvent(int stick, int axis, int value)
-{
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(!joy)  return;
-
-  // Stelladaptors handle axis differently than regular joysticks
-  switch(joy->type)
-  {
-    case StellaJoystick::JT_REGULAR:
-      if(myState == S_EMULATE)
-      {
-        // Every axis event has two associated values, negative and positive
-        Event::Type eventAxisNeg = joy->axisTable[axis][0][kEmulationMode];
-        Event::Type eventAxisPos = joy->axisTable[axis][1][kEmulationMode];
-
-        // Check for analog events, which are handled differently
-        // We'll pass them off as Stelladaptor events, and let the controllers
-        // handle it
-        switch(int(eventAxisNeg))
-        {
-          case Event::PaddleZeroAnalog:
-            myEvent.set(Event::SALeftAxis0Value, value);
-            break;
-          case Event::PaddleOneAnalog:
-            myEvent.set(Event::SALeftAxis1Value, value);
-            break;
-          case Event::PaddleTwoAnalog:
-            myEvent.set(Event::SARightAxis0Value, value);
-            break;
-          case Event::PaddleThreeAnalog:
-            myEvent.set(Event::SARightAxis1Value, value);
-            break;
-          default:
-          {
-            // Otherwise, we know the event is digital
-            if(value > Joystick::deadzone())
-              handleEvent(eventAxisPos, 1);
-            else if(value < -Joystick::deadzone())
-              handleEvent(eventAxisNeg, 1);
-            else
-            {
-              // Treat any deadzone value as zero
-              value = 0;
-
-              // Now filter out consecutive, similar values
-              // (only pass on the event if the state has changed)
-              if(joy->axisLastValue[axis] != value)
-              {
-                // Turn off both events, since we don't know exactly which one
-                // was previously activated.
-                handleEvent(eventAxisNeg, 0);
-                handleEvent(eventAxisPos, 0);
-              }
-            }
-            joy->axisLastValue[axis] = value;
-            break;
-          }
-        }
-      }
-      else if(myOverlay)
-      {
-        // First, clamp the values to simulate digital input
-        // (the only thing that the underlying code understands)
-        if(value > Joystick::deadzone())
-          value = 32000;
-        else if(value < -Joystick::deadzone())
-          value = -32000;
-        else
-          value = 0;
-
-        // Now filter out consecutive, similar values
-        // (only pass on the event if the state has changed)
-        if(value != joy->axisLastValue[axis])
-        {
-          myOverlay->handleJoyAxisEvent(stick, axis, value);
-          joy->axisLastValue[axis] = value;
-        }
-      }
-      break;  // Regular joystick axis
-
-    // Since the various controller classes deal with Stelladaptor
-    // devices differently, we send the raw X and Y axis data directly,
-    // and let the controller handle it
-    // These events don't have to pass through handleEvent, since
-    // they can never be remapped
-    case StellaJoystick::JT_STELLADAPTOR_LEFT:
-    case StellaJoystick::JT_STELLADAPTOR_RIGHT:
-      // The 'type-2' here refers to the fact that 'StellaJoystick::JT_STELLADAPTOR_LEFT'
-      // and 'StellaJoystick::JT_STELLADAPTOR_RIGHT' are at index 2 and 3 in the JoyType
-      // enum; subtracting two gives us Controller 0 and 1
-      if(axis < 2)
-        myEvent.set(SA_Axis[joy->type-2][axis], value);
-      break;  // Stelladaptor axis
-    case StellaJoystick::JT_2600DAPTOR_LEFT:
-    case StellaJoystick::JT_2600DAPTOR_RIGHT:
-      // The 'type-4' here refers to the fact that 'StellaJoystick::JT_2600DAPTOR_LEFT'
-      // and 'StellaJoystick::JT_2600DAPTOR_RIGHT' are at index 4 and 5 in the JoyType
-      // enum; subtracting four gives us Controller 0 and 1
-      if(axis < 2)
-        myEvent.set(SA_Axis[joy->type-4][axis], value);
-      break;  // 2600-daptor axis
-    default:
-      break;
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleJoyHatEvent(int stick, int hat, int value)
-{
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(!joy)  return;
-
-  // Preprocess all hat events, converting to Stella JoyHat type
-  // Generate multiple equivalent hat events representing combined direction
-  // when we get a diagonal hat event
-  if(myState == S_EMULATE)
-  {
-    handleEvent(joy->hatTable[hat][int(JoyHat::UP)][kEmulationMode],
-                value & EVENT_HATUP_M);
-    handleEvent(joy->hatTable[hat][int(JoyHat::RIGHT)][kEmulationMode],
-                value & EVENT_HATRIGHT_M);
-    handleEvent(joy->hatTable[hat][int(JoyHat::DOWN)][kEmulationMode],
-                value & EVENT_HATDOWN_M);
-    handleEvent(joy->hatTable[hat][int(JoyHat::LEFT)][kEmulationMode],
-                value & EVENT_HATLEFT_M);
-  }
-  else if(myOverlay)
-  {
-    if(value == EVENT_HATCENTER_M)
-      myOverlay->handleJoyHatEvent(stick, hat, JoyHat::CENTER);
-    else
-    {
-      if(value & EVENT_HATUP_M)
-        myOverlay->handleJoyHatEvent(stick, hat, JoyHat::UP);
-      if(value & EVENT_HATRIGHT_M)
-        myOverlay->handleJoyHatEvent(stick, hat, JoyHat::RIGHT);
-      if(value & EVENT_HATDOWN_M)
-        myOverlay->handleJoyHatEvent(stick, hat, JoyHat::DOWN);
-      if(value & EVENT_HATLEFT_M)
-        myOverlay->handleJoyHatEvent(stick, hat, JoyHat::LEFT);
-    }
-  }
+    myOverlay->handleMouseButtonEvent(b, pressed, x, y);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -901,19 +289,20 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
 {
   switch(e)
   {
-    case EVENT_WINDOW_EXPOSED:
-      myOSystem.frameBuffer().update();
+    case SystemEvent::WINDOW_EXPOSED:
+    case SystemEvent::WINDOW_RESIZED:
+      myOSystem.frameBuffer().update(true); // force full update
       break;
 
-    case EVENT_WINDOW_FOCUS_GAINED:
+    case SystemEvent::WINDOW_FOCUS_GAINED:
       // Used to handle Alt-x key combos; sometimes the key associated with
       // Alt gets 'stuck'  and is passed to the core for processing
-      if(myAltKeyCounter > 0)
-        myAltKeyCounter = 2;
+      if(myPKeyHandler->altKeyCount() > 0)
+        myPKeyHandler->altKeyCount() = 2;
       break;
 #if 0
-    case EVENT_WINDOW_MINIMIZED:
-      if(myState == S_EMULATE) enterMenuMode(S_MENU);
+    case SystemEvent::WINDOW_MINIMIZED:
+      if(myState == EventHandlerState::EMULATION) enterMenuMode(EventHandlerState::OPTIONSMENU);
         break;
 #endif
     default:  // handle other events as testing requires
@@ -923,7 +312,7 @@ void EventHandler::handleSystemEvent(SystemEvent e, int, int)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::handleEvent(Event::Type event, int state)
+void EventHandler::handleEvent(Event::Type event, Int32 state)
 {
   // Take care of special events that aren't part of the emulation core
   // or need to be preprocessed before passing them on
@@ -973,7 +362,7 @@ void EventHandler::handleEvent(Event::Type event, int state)
     ////////////////////////////////////////////////////////////////////////
 
     case Event::Fry:
-      if(myUseCtrlKeyFlag) myFryingFlag = bool(state);
+      if(myPKeyHandler->useCtrlKey()) myFryingFlag = bool(state);
       return;
 
     case Event::VolumeDecrease:
@@ -997,12 +386,12 @@ void EventHandler::handleEvent(Event::Type event, int state)
       return;
 
     case Event::TakeSnapshot:
-      if(state) takeSnapshot();
+      if(state) myOSystem.png().takeSnapshot();
       return;
 
     case Event::LauncherMode:
-      if((myState == S_EMULATE || myState == S_CMDMENU ||
-          myState == S_DEBUGGER) && state)
+      if((myState == EventHandlerState::EMULATION || myState == EventHandlerState::CMDMENU ||
+          myState == EventHandlerState::DEBUGGER) && state)
       {
         // Go back to the launcher, or immediately quit
         if(myOSystem.settings().getBool("exitlauncher") ||
@@ -1211,44 +600,56 @@ void EventHandler::handleConsoleStartupEvents()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool EventHandler::eventStateChange(Event::Type type)
+bool EventHandler::changeStateByEvent(Event::Type type)
 {
   bool handled = true;
 
   switch(type)
   {
     case Event::PauseMode:
-      if(myState == S_EMULATE)
-        setEventState(S_PAUSE);
-      else if(myState == S_PAUSE)
-        setEventState(S_EMULATE);
+      if(myState == EventHandlerState::EMULATION)
+        setState(EventHandlerState::PAUSE);
+      else if(myState == EventHandlerState::PAUSE)
+        setState(EventHandlerState::EMULATION);
       else
         handled = false;
       break;
 
-    case Event::MenuMode:
-      if(myState == S_EMULATE)
-        enterMenuMode(S_MENU);
+    case Event::OptionsMenuMode:
+      if(myState == EventHandlerState::EMULATION || myState == EventHandlerState::PAUSE)
+        enterMenuMode(EventHandlerState::OPTIONSMENU);
       else
         handled = false;
       break;
 
     case Event::CmdMenuMode:
-      if(myState == S_EMULATE)
-        enterMenuMode(S_CMDMENU);
-      else if(myState == S_CMDMENU)
+      if(myState == EventHandlerState::EMULATION || myState == EventHandlerState::PAUSE)
+        enterMenuMode(EventHandlerState::CMDMENU);
+      else if(myState == EventHandlerState::CMDMENU)
+        leaveMenuMode();
+      else
+        handled = false;
+      break;
+
+    case Event::TimeMachineMode:
+      if(myState == EventHandlerState::EMULATION || myState == EventHandlerState::PAUSE)
+        enterTimeMachineMenuMode(0, false);
+      else if(myState == EventHandlerState::TIMEMACHINE)
         leaveMenuMode();
       else
         handled = false;
       break;
 
     case Event::DebuggerMode:
-      if(myState == S_EMULATE || myState == S_PAUSE)
+  #ifdef DEBUGGER_SUPPORT
+      if(myState == EventHandlerState::EMULATION || myState == EventHandlerState::PAUSE
+         || myState == EventHandlerState::TIMEMACHINE)
         enterDebugMode();
-      else if(myState == S_DEBUGGER)
+      else if(myState == EventHandlerState::DEBUGGER && myOSystem.debugger().canExit())
         leaveDebugMode();
       else
         handled = false;
+  #endif
       break;
 
     default:
@@ -1278,97 +679,20 @@ void EventHandler::setActionMappings(EventMode mode)
       return;
   }
 
-  ostringstream buf;
-
   // Fill the ActionList with the current key and joystick mappings
   for(int i = 0; i < listsize; ++i)
   {
     Event::Type event = list[i].event;
     list[i].key = "None";
-    string key = "";
-    for(int j = 0; j < KBDK_LAST; ++j)   // key mapping
-    {
-      if(myKeyTable[j][mode] == event)
-      {
-        if(key == "")
-          key = key + nameForKey(StellaKey(j));
-        else
-          key = key + ", " + nameForKey(StellaKey(j));
-      }
-    }
+    string key = myPKeyHandler->getMappingDesc(event, mode);
 
 #ifdef JOYSTICK_SUPPORT
-    for(const auto& st: myJoyHandler->sticks())
+    string joydesc = myPJoyHandler->getMappingDesc(event, mode);
+    if(joydesc != "")
     {
-      uInt32 stick = st.first;
-      const StellaJoystick* joy = st.second;
-      if(!joy)  continue;
-
-      // Joystick button mapping/labeling
-      for(int button = 0; button < joy->numButtons; ++button)
-      {
-        if(joy->btnTable[button][mode] == event)
-        {
-          buf.str("");
-          buf << "J" << stick << "/B" << button;
-          if(key == "")
-            key = key + buf.str();
-          else
-            key = key + ", " + buf.str();
-        }
-      }
-
-      // Joystick axis mapping/labeling
-      for(int axis = 0; axis < joy->numAxes; ++axis)
-      {
-        for(int dir = 0; dir < 2; ++dir)
-        {
-          if(joy->axisTable[axis][dir][mode] == event)
-          {
-            buf.str("");
-            buf << "J" << stick << "/A" << axis;
-            if(eventIsAnalog(event))
-            {
-              dir = 2;  // Immediately exit the inner loop after this iteration
-              buf << "/+|-";
-            }
-            else if(dir == 0)
-              buf << "/-";
-            else
-              buf << "/+";
-
-            if(key == "")
-              key = key + buf.str();
-            else
-              key = key + ", " + buf.str();
-          }
-        }
-      }
-
-      // Joystick hat mapping/labeling
-      for(int hat = 0; hat < joy->numHats; ++hat)
-      {
-        for(int dir = 0; dir < 4; ++dir)
-        {
-          if(joy->hatTable[hat][dir][mode] == event)
-          {
-            buf.str("");
-            buf << "J" << stick << "/H" << hat;
-            switch(JoyHat(dir))
-            {
-              case JoyHat::UP:    buf << "/up";    break;
-              case JoyHat::DOWN:  buf << "/down";  break;
-              case JoyHat::LEFT:  buf << "/left";  break;
-              case JoyHat::RIGHT: buf << "/right"; break;
-              case JoyHat::CENTER:                 break;
-            }
-            if(key == "")
-              key = key + buf.str();
-            else
-              key = key + ", " + buf.str();
-          }
-        }
-      }
+      if(key != "")
+        key += ", ";
+      key += joydesc;
     }
 #endif
 
@@ -1397,42 +721,6 @@ void EventHandler::setActionMappings(EventMode mode)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::setKeymap()
-{
-  // Since istringstream swallows whitespace, we have to make the
-  // delimiters be spaces
-  string list = myOSystem.settings().getString("keymap");
-  replace(list.begin(), list.end(), ':', ' ');
-  istringstream buf(list);
-
-  IntArray map;
-  int value;
-  Event::Type event;
-
-  // Get event count, which should be the first int in the list
-  buf >> value;
-  event = Event::Type(value);
-  if(event == Event::LastType)
-    while(buf >> value)
-      map.push_back(value);
-
-  // Only fill the key mapping array if the data is valid
-  if(event == Event::LastType && map.size() == KBDK_LAST * kNumModes)
-  {
-    // Fill the keymap table with events
-    auto e = map.cbegin();
-    for(int mode = 0; mode < kNumModes; ++mode)
-      for(int i = 0; i < KBDK_LAST; ++i)
-        myKeyTable[i][mode] = Event::Type(*e++);
-  }
-  else
-  {
-    setDefaultKeymap(Event::NoType, kEmulationMode);
-    setDefaultKeymap(Event::NoType, kMenuMode);
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setComboMap()
 {
   // Since istringstream swallows whitespace, we have to make the
@@ -1441,69 +729,63 @@ void EventHandler::setComboMap()
   replace(list.begin(), list.end(), ':', ' ');
   istringstream buf(list);
 
-  // Get combo count, which should be the first int in the list
-  // If it isn't, then we treat the entire list as invalid
-  string key;
-  buf >> key;
-  if(atoi(key.c_str()) == kComboSize)
-  {
-    // Fill the combomap table with events for as long as they exist
-    int combocount = 0;
-    while(buf >> key && combocount < kComboSize)
-    {
-      // Each event in a comboevent is separated by a comma
-      replace(key.begin(), key.end(), ',', ' ');
-      istringstream buf2(key);
-
-      int eventcount = 0;
-      while(buf2 >> key && eventcount < kEventsPerCombo)
-      {
-        myComboTable[combocount][eventcount] = Event::Type(atoi(key.c_str()));
-        ++eventcount;
-      }
-      ++combocount;
-    }
-  }
-  else
-  {
-    // Erase the 'combo' array
+  // Erase the 'combo' array
+  auto ERASE_ALL = [&]() {
     for(int i = 0; i < kComboSize; ++i)
       for(int j = 0; j < kEventsPerCombo; ++j)
         myComboTable[i][j] = Event::NoType;
+  };
+
+  // Get combo count, which should be the first int in the list
+  // If it isn't, then we treat the entire list as invalid
+  if(!buf.good())
+    ERASE_ALL();
+  else
+  {
+    string key;
+    buf >> key;
+    if(atoi(key.c_str()) == kComboSize)
+    {
+      // Fill the combomap table with events for as long as they exist
+      int combocount = 0;
+      while(buf >> key && combocount < kComboSize)
+      {
+        // Each event in a comboevent is separated by a comma
+        replace(key.begin(), key.end(), ',', ' ');
+        istringstream buf2(key);
+
+        int eventcount = 0;
+        while(buf2 >> key && eventcount < kEventsPerCombo)
+        {
+          myComboTable[combocount][eventcount] = Event::Type(atoi(key.c_str()));
+          ++eventcount;
+        }
+        ++combocount;
+      }
+    }
+    else
+      ERASE_ALL();
   }
 
   saveComboMapping();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-VariantList EventHandler::joystickDatabase() const
+void EventHandler::removePhysicalJoystickFromDatabase(const string& name)
 {
-  VariantList db;
-  for(const auto& i: myJoyHandler->database())
-    VarList::push_back(db, i.first, i.second.joy ? i.second.joy->ID : -1);
-
-  return db;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::removeJoystickFromDatabase(const string& name)
-{
-  myJoyHandler->remove(name);
+#ifdef JOYSTICK_SUPPORT
+  myPJoyHandler->remove(name);
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool EventHandler::addKeyMapping(Event::Type event, EventMode mode, StellaKey key)
 {
-  // These keys cannot be remapped
-  if(key == KBDK_TAB || eventIsAnalog(event))
-    return false;
-  else
-  {
-    myKeyTable[key][mode] = event;
+  bool mapped = myPKeyHandler->addMapping(event, mode, key);
+  if(mapped)
     setActionMappings(mode);
 
-    return true;
-  }
+  return mapped;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1512,33 +794,14 @@ bool EventHandler::addJoyAxisMapping(Event::Type event, EventMode mode,
                                      bool updateMenus)
 {
 #ifdef JOYSTICK_SUPPORT
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(joy)
-  {
-    if(axis >= 0 && axis < joy->numAxes && event < Event::LastType)
-    {
-      // This confusing code is because each axis has two associated values,
-      // but analog events only affect one of the axis.
-      if(eventIsAnalog(event))
-        joy->axisTable[axis][0][mode] =
-          joy->axisTable[axis][1][mode] = event;
-      else
-      {
-        // Otherwise, turn off the analog event(s) for this axis
-        if(eventIsAnalog(joy->axisTable[axis][0][mode]))
-          joy->axisTable[axis][0][mode] = Event::NoType;
-        if(eventIsAnalog(joy->axisTable[axis][1][mode]))
-          joy->axisTable[axis][1][mode] = Event::NoType;
+  bool mapped = myPJoyHandler->addAxisMapping(event, mode, stick, axis, value);
+  if(mapped && updateMenus)
+    setActionMappings(mode);
 
-        joy->axisTable[axis][(value > 0)][mode] = event;
-      }
-      if(updateMenus)
-        setActionMappings(mode);
-      return true;
-    }
-  }
-#endif
+  return mapped;
+#else
   return false;
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1547,19 +810,14 @@ bool EventHandler::addJoyButtonMapping(Event::Type event, EventMode mode,
                                        bool updateMenus)
 {
 #ifdef JOYSTICK_SUPPORT
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(joy)
-  {
-    if(button >= 0 && button < joy->numButtons && event < Event::LastType)
-    {
-      joy->btnTable[button][mode] = event;
-      if(updateMenus)
-        setActionMappings(mode);
-      return true;
-    }
-  }
-#endif
+  bool mapped = myPJoyHandler->addBtnMapping(event, mode, stick, button);
+  if(mapped && updateMenus)
+    setActionMappings(mode);
+
+  return mapped;
+#else
   return false;
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1568,33 +826,25 @@ bool EventHandler::addJoyHatMapping(Event::Type event, EventMode mode,
                                     bool updateMenus)
 {
 #ifdef JOYSTICK_SUPPORT
-  const StellaJoystick* joy = myJoyHandler->joy(stick);
-  if(joy)
-  {
-    if(hat >= 0 && hat < joy->numHats && event < Event::LastType &&
-       value != JoyHat::CENTER)
-    {
-      joy->hatTable[hat][int(value)][mode] = event;
-      if(updateMenus)
-        setActionMappings(mode);
-      return true;
-    }
-  }
-#endif
+  bool mapped = myPJoyHandler->addHatMapping(event, mode, stick, hat, value);
+  if(mapped && updateMenus)
+    setActionMappings(mode);
+
+  return mapped;
+#else
   return false;
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::eraseMapping(Event::Type event, EventMode mode)
 {
-  // Erase the KeyEvent arrays
-  for(int i = 0; i < KBDK_LAST; ++i)
-    if(myKeyTable[i][mode] == event && i != KBDK_TAB)
-      myKeyTable[i][mode] = Event::NoType;
+  // Erase the KeyEvent array
+  myPKeyHandler->eraseMapping(event, mode);
 
 #ifdef JOYSTICK_SUPPORT
   // Erase the joystick mapping arrays
-  myJoyHandler->eraseMapping(event, mode);
+  myPJoyHandler->eraseMapping(event, mode);
 #endif
 
   setActionMappings(mode);
@@ -1610,137 +860,31 @@ void EventHandler::setDefaultMapping(Event::Type event, EventMode mode)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setDefaultKeymap(Event::Type event, EventMode mode)
 {
-  // If event is 'NoType', erase and reset all mappings
-  // Otherwise, only reset the given event
-  bool eraseAll = (event == Event::NoType);
-  if(eraseAll)
-  {
-    // Erase all mappings
-    for(int i = 0; i < KBDK_LAST; ++i)
-      myKeyTable[i][mode] = Event::NoType;
-  }
-
-  auto setDefaultKey = [&](StellaKey key, Event::Type k_event)
-  {
-    if(eraseAll || k_event == event)
-      myKeyTable[key][mode] = k_event;
-  };
-
-  switch(mode)
-  {
-    case kEmulationMode:
-      setDefaultKey( KBDK_1,         Event::KeyboardZero1     );
-      setDefaultKey( KBDK_2,         Event::KeyboardZero2     );
-      setDefaultKey( KBDK_3,         Event::KeyboardZero3     );
-      setDefaultKey( KBDK_Q,         Event::KeyboardZero4     );
-      setDefaultKey( KBDK_W,         Event::KeyboardZero5     );
-      setDefaultKey( KBDK_E,         Event::KeyboardZero6     );
-      setDefaultKey( KBDK_A,         Event::KeyboardZero7     );
-      setDefaultKey( KBDK_S,         Event::KeyboardZero8     );
-      setDefaultKey( KBDK_D,         Event::KeyboardZero9     );
-      setDefaultKey( KBDK_Z,         Event::KeyboardZeroStar  );
-      setDefaultKey( KBDK_X,         Event::KeyboardZero0     );
-      setDefaultKey( KBDK_C,         Event::KeyboardZeroPound );
-
-      setDefaultKey( KBDK_8,         Event::KeyboardOne1      );
-      setDefaultKey( KBDK_9,         Event::KeyboardOne2      );
-      setDefaultKey( KBDK_0,         Event::KeyboardOne3      );
-      setDefaultKey( KBDK_I,         Event::KeyboardOne4      );
-      setDefaultKey( KBDK_O,         Event::KeyboardOne5      );
-      setDefaultKey( KBDK_P,         Event::KeyboardOne6      );
-      setDefaultKey( KBDK_K,         Event::KeyboardOne7      );
-      setDefaultKey( KBDK_L,         Event::KeyboardOne8      );
-      setDefaultKey( KBDK_SEMICOLON, Event::KeyboardOne9      );
-      setDefaultKey( KBDK_COMMA,     Event::KeyboardOneStar   );
-      setDefaultKey( KBDK_PERIOD,    Event::KeyboardOne0      );
-      setDefaultKey( KBDK_SLASH,     Event::KeyboardOnePound  );
-
-      setDefaultKey( KBDK_UP,        Event::JoystickZeroUp    );
-      setDefaultKey( KBDK_DOWN,      Event::JoystickZeroDown  );
-      setDefaultKey( KBDK_LEFT,      Event::JoystickZeroLeft  );
-      setDefaultKey( KBDK_RIGHT,     Event::JoystickZeroRight );
-      setDefaultKey( KBDK_SPACE,     Event::JoystickZeroFire  );
-      setDefaultKey( KBDK_LCTRL,     Event::JoystickZeroFire  );
-      setDefaultKey( KBDK_4,         Event::JoystickZeroFire5 );
-      setDefaultKey( KBDK_5,         Event::JoystickZeroFire9 );
-
-      setDefaultKey( KBDK_Y,         Event::JoystickOneUp     );
-      setDefaultKey( KBDK_H,         Event::JoystickOneDown   );
-      setDefaultKey( KBDK_G,         Event::JoystickOneLeft   );
-      setDefaultKey( KBDK_J,         Event::JoystickOneRight  );
-      setDefaultKey( KBDK_F,         Event::JoystickOneFire   );
-      setDefaultKey( KBDK_6,         Event::JoystickOneFire5  );
-      setDefaultKey( KBDK_7,         Event::JoystickOneFire9  );
-
-
-      setDefaultKey( KBDK_F1,        Event::ConsoleSelect     );
-      setDefaultKey( KBDK_F2,        Event::ConsoleReset      );
-      setDefaultKey( KBDK_F3,        Event::ConsoleColor      );
-      setDefaultKey( KBDK_F4,        Event::ConsoleBlackWhite );
-      setDefaultKey( KBDK_F5,        Event::ConsoleLeftDiffA  );
-      setDefaultKey( KBDK_F6,        Event::ConsoleLeftDiffB  );
-      setDefaultKey( KBDK_F7,        Event::ConsoleRightDiffA );
-      setDefaultKey( KBDK_F8,        Event::ConsoleRightDiffB );
-      setDefaultKey( KBDK_F9,        Event::SaveState         );
-      setDefaultKey( KBDK_F10,       Event::ChangeState       );
-      setDefaultKey( KBDK_F11,       Event::LoadState         );
-      setDefaultKey( KBDK_F12,       Event::TakeSnapshot      );
-      setDefaultKey( KBDK_BACKSPACE, Event::Fry               );
-      setDefaultKey( KBDK_PAUSE,     Event::PauseMode         );
-      setDefaultKey( KBDK_TAB,       Event::MenuMode          );
-      setDefaultKey( KBDK_BACKSLASH, Event::CmdMenuMode       );
-      setDefaultKey( KBDK_GRAVE,     Event::DebuggerMode      );
-      setDefaultKey( KBDK_ESCAPE,    Event::LauncherMode      );
-      break;
-
-    case kMenuMode:
-      setDefaultKey( KBDK_UP,        Event::UIUp      );
-      setDefaultKey( KBDK_DOWN,      Event::UIDown    );
-      setDefaultKey( KBDK_LEFT,      Event::UILeft    );
-      setDefaultKey( KBDK_RIGHT,     Event::UIRight   );
-
-      setDefaultKey( KBDK_HOME,      Event::UIHome    );
-      setDefaultKey( KBDK_END,       Event::UIEnd     );
-      setDefaultKey( KBDK_PAGEUP,    Event::UIPgUp    );
-      setDefaultKey( KBDK_PAGEDOWN,  Event::UIPgDown  );
-
-      setDefaultKey( KBDK_RETURN,    Event::UISelect  );
-      setDefaultKey( KBDK_ESCAPE,    Event::UICancel  );
-
-      setDefaultKey( KBDK_BACKSPACE, Event::UIPrevDir );
-      break;
-
-    default:
-      return;
-  }
+  myPKeyHandler->setDefaultMapping(event, mode);
   setActionMappings(mode);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setDefaultJoymap(Event::Type event, EventMode mode)
 {
-  myJoyHandler->setDefaultMapping(event, mode);
+#ifdef JOYSTICK_SUPPORT
+  myPJoyHandler->setDefaultMapping(event, mode);
   setActionMappings(mode);
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::saveKeyMapping()
 {
-  // Iterate through the keymap table and create a colon-separated list
-  // Prepend the event count, so we can check it on next load
-  ostringstream keybuf;
-  keybuf << Event::LastType;
-  for(int mode = 0; mode < kNumModes; ++mode)
-    for(int i = 0; i < KBDK_LAST; ++i)
-      keybuf << ":" << myKeyTable[i][mode];
-
-  myOSystem.settings().setValue("keymap", keybuf.str());
+  myPKeyHandler->saveMapping();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::saveJoyMapping()
 {
-  myJoyHandler->saveMapping();
+#ifdef JOYSTICK_SUPPORT
+  myPJoyHandler->saveMapping();
+#endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1758,21 +902,6 @@ void EventHandler::saveComboMapping()
       buf << "," << myComboTable[i][j];
   }
   myOSystem.settings().setValue("combomap", buf.str());
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-inline bool EventHandler::eventIsAnalog(Event::Type event) const
-{
-  switch(event)
-  {
-    case Event::PaddleZeroAnalog:
-    case Event::PaddleOneAnalog:
-    case Event::PaddleTwoAnalog:
-    case Event::PaddleThreeAnalog:
-      return true;
-    default:
-      return false;
-  }
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1924,118 +1053,6 @@ string EventHandler::keyAtIndex(int idx, EventMode mode) const
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::takeSnapshot(uInt32 number)
-{
-  // Figure out the correct snapshot name
-  string filename;
-  bool showmessage = number == 0;
-  string sspath = myOSystem.snapshotSaveDir() +
-      (myOSystem.settings().getString("snapname") != "int" ?
-          myOSystem.romFile().getNameWithExt("")
-        : myOSystem.console().properties().get(Cartridge_Name));
-
-  // Check whether we want multiple snapshots created
-  if(number > 0)
-  {
-    ostringstream buf;
-    buf << sspath << "_" << std::hex << std::setw(8) << std::setfill('0')
-        << number << ".png";
-    filename = buf.str();
-  }
-  else if(!myOSystem.settings().getBool("sssingle"))
-  {
-    // Determine if the file already exists, checking each successive filename
-    // until one doesn't exist
-    filename = sspath + ".png";
-    FilesystemNode node(filename);
-    if(node.exists())
-    {
-      ostringstream buf;
-      for(uInt32 i = 1; ;++i)
-      {
-        buf.str("");
-        buf << sspath << "_" << i << ".png";
-        FilesystemNode next(buf.str());
-        if(!next.exists())
-          break;
-      }
-      filename = buf.str();
-    }
-  }
-  else
-    filename = sspath + ".png";
-
-  // Some text fields to add to the PNG snapshot
-  VariantList comments;
-  ostringstream version;
-  version << "Stella " << STELLA_VERSION << " (Build " << STELLA_BUILD << ") ["
-          << BSPF::ARCH << "]";
-  VarList::push_back(comments, "Software", version.str());
-  VarList::push_back(comments, "ROM Name", myOSystem.console().properties().get(Cartridge_Name));
-  VarList::push_back(comments, "ROM MD5", myOSystem.console().properties().get(Cartridge_MD5));
-  VarList::push_back(comments, "TV Effects", myOSystem.frameBuffer().tiaSurface().effectsInfo());
-
-  // Now create a PNG snapshot
-  if(myOSystem.settings().getBool("ss1x"))
-  {
-    string message = "Snapshot saved";
-    try
-    {
-      GUI::Rect rect;
-      const FBSurface& surface = myOSystem.frameBuffer().tiaSurface().baseSurface(rect);
-      myOSystem.png().saveImage(filename, surface, rect, comments);
-    }
-    catch(const runtime_error& e)
-    {
-      message = e.what();
-    }
-    if(showmessage)
-      myOSystem.frameBuffer().showMessage(message);
-  }
-  else
-  {
-    // Make sure we have a 'clean' image, with no onscreen messages
-    myOSystem.frameBuffer().enableMessages(false);
-    myOSystem.frameBuffer().tiaSurface().reRender();
-
-    string message = "Snapshot saved";
-    try
-    {
-      myOSystem.png().saveImage(filename, comments);
-    }
-    catch(const runtime_error& e)
-    {
-      message = e.what();
-    }
-
-    // Re-enable old messages
-    myOSystem.frameBuffer().enableMessages(true);
-    if(showmessage)
-      myOSystem.frameBuffer().showMessage(message);
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-bool EventHandler::controllerIsAnalog(Controller::Jack jack) const
-{
-  const Controller& controller = jack == Controller::Left ?
-      myOSystem.console().leftController() : myOSystem.console().rightController();
-
-  switch(controller.type())
-  {
-    case Controller::Paddles:
-    case Controller::Driving:
-    case Controller::AmigaMouse:
-    case Controller::AtariMouse:
-    case Controller::TrakBall:
-    case Controller::MindLink:
-      return true;
-    default:
-      return false;
-  }
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::setMouseControllerMode(const string& enable)
 {
   if(myOSystem.hasConsole())
@@ -2047,9 +1064,8 @@ void EventHandler::setMouseControllerMode(const string& enable)
       usemouse = false;
     else  // 'analog'
     {
-      if(controllerIsAnalog(Controller::Left) ||
-         controllerIsAnalog(Controller::Right))
-        usemouse = true;
+      usemouse = myOSystem.console().controller(Controller::Left).isAnalog() ||
+                 myOSystem.console().controller(Controller::Right).isAnalog();
     }
 
     const string& control = usemouse ?
@@ -2061,16 +1077,9 @@ void EventHandler::setMouseControllerMode(const string& enable)
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::setContinuousSnapshots(uInt32 interval)
+void EventHandler::enterMenuMode(EventHandlerState state)
 {
-  myContSnapshotInterval = interval;
-  myContSnapshotCounter = 0;
-}
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::enterMenuMode(State state)
-{
-  setEventState(state);
+  setState(state);
   myOverlay->reStack();
   myOSystem.sound().mute(true);
 }
@@ -2078,7 +1087,7 @@ void EventHandler::enterMenuMode(State state)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void EventHandler::leaveMenuMode()
 {
-  setEventState(S_EMULATE);
+  setState(EventHandlerState::EMULATION);
   myOSystem.sound().mute(false);
 }
 
@@ -2086,7 +1095,7 @@ void EventHandler::leaveMenuMode()
 bool EventHandler::enterDebugMode()
 {
 #ifdef DEBUGGER_SUPPORT
-  if(myState == S_DEBUGGER || !myOSystem.hasConsole())
+  if(myState == EventHandlerState::DEBUGGER || !myOSystem.hasConsole())
     return false;
 
   // Make sure debugger starts in a consistent state
@@ -2094,13 +1103,13 @@ bool EventHandler::enterDebugMode()
   // mode, since it takes care of locking the debugger state, which will
   // probably be modified below
   myOSystem.debugger().setStartState();
-  setEventState(S_DEBUGGER);
+  setState(EventHandlerState::DEBUGGER);
 
   FBInitStatus fbstatus = myOSystem.createFrameBuffer();
   if(fbstatus != FBInitStatus::Success)
   {
     myOSystem.debugger().setQuitState();
-    setEventState(S_EMULATE);
+    setState(EventHandlerState::EMULATION);
     if(fbstatus == FBInitStatus::FailTooLarge)
       myOSystem.frameBuffer().showMessage("Debugger window too large for screen",
                                           MessagePosition::BottomCenter, true);
@@ -2121,70 +1130,88 @@ void EventHandler::leaveDebugMode()
 {
 #ifdef DEBUGGER_SUPPORT
   // paranoia: this should never happen:
-  if(myState != S_DEBUGGER)
+  if(myState != EventHandlerState::DEBUGGER)
     return;
 
   // Make sure debugger quits in a consistent state
   myOSystem.debugger().setQuitState();
 
-  setEventState(S_EMULATE);
+  setState(EventHandlerState::EMULATION);
   myOSystem.createFrameBuffer();
   myOSystem.sound().mute(false);
 #endif
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-void EventHandler::setEventState(State state)
+void EventHandler::enterTimeMachineMenuMode(uInt32 numWinds, bool unwind)
+{
+  // add one extra state if we are in Time Machine mode
+  // TODO: maybe remove this state if we leave the menu at this new state
+  myOSystem.state().addExtraState("enter Time Machine dialog"); // force new state
+
+  if(numWinds)
+    // hande winds and display wind message (numWinds != 0) in time machine dialog
+    myOSystem.timeMachine().setEnterWinds(unwind ? numWinds : -numWinds);
+
+  enterMenuMode(EventHandlerState::TIMEMACHINE);
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void EventHandler::setState(EventHandlerState state)
 {
   myState = state;
 
   // Normally, the usage of Control key is determined by 'ctrlcombo'
   // For certain ROMs it may be forced off, whatever the setting
-  myUseCtrlKeyFlag = myOSystem.settings().getBool("ctrlcombo");
+  myPKeyHandler->useCtrlKey() = myOSystem.settings().getBool("ctrlcombo");
 
   // Only enable text input in GUI modes, since in emulation mode the
   // keyboard acts as one large joystick with many (single) buttons
+  myOverlay = nullptr;
   switch(myState)
   {
-    case S_EMULATE:
-      myOverlay = nullptr;
+    case EventHandlerState::EMULATION:
       myOSystem.sound().mute(false);
       enableTextEvents(false);
       if(myOSystem.console().leftController().type() == Controller::CompuMate)
-        myUseCtrlKeyFlag = false;
+        myPKeyHandler->useCtrlKey() = false;
       break;
 
-    case S_PAUSE:
-      myOverlay = nullptr;
+    case EventHandlerState::PAUSE:
       myOSystem.sound().mute(true);
       enableTextEvents(false);
       break;
 
-    case S_MENU:
+    case EventHandlerState::OPTIONSMENU:
       myOverlay = &myOSystem.menu();
       enableTextEvents(true);
       break;
 
-    case S_CMDMENU:
+    case EventHandlerState::CMDMENU:
       myOverlay = &myOSystem.commandMenu();
       enableTextEvents(true);
       break;
 
-    case S_LAUNCHER:
+    case EventHandlerState::TIMEMACHINE:
+      myOSystem.timeMachine().requestResize();
+      myOverlay = &myOSystem.timeMachine();
+      enableTextEvents(true);
+      break;
+
+    case EventHandlerState::LAUNCHER:
       myOverlay = &myOSystem.launcher();
       enableTextEvents(true);
       myEvent.clear();
       break;
 
-#ifdef DEBUGGER_SUPPORT
-    case S_DEBUGGER:
+    case EventHandlerState::DEBUGGER:
+  #ifdef DEBUGGER_SUPPORT
       myOverlay = &myOSystem.debugger();
       enableTextEvents(true);
+  #endif
       break;
-#endif
 
-    default:
-      myOverlay = nullptr;
+    case EventHandlerState::NONE:
       break;
   }
 
@@ -2222,8 +1249,9 @@ EventHandler::ActionList EventHandler::ourEmulActionList[kEmulActionListSize] = 
   { Event::VolumeDecrease,         "Decrease volume",          "", false },
   { Event::VolumeIncrease,         "Increase volume",          "", false },
   { Event::PauseMode,              "Pause",                    "", false },
-  { Event::MenuMode,               "Enter options menu mode",  "", false },
-  { Event::CmdMenuMode,            "Toggle command menu mode", "", false },
+  { Event::OptionsMenuMode,        "Enter options menu UI",    "", false },
+  { Event::CmdMenuMode,            "Toggle command menu UI",   "", false },
+  { Event::TimeMachineMode,        "Toggle time machine UI",   "", false },
   { Event::DebuggerMode,           "Toggle debugger mode",     "", false },
   { Event::LauncherMode,           "Enter ROM launcher",       "", false },
   { Event::Quit,                   "Quit",                     "", false },
@@ -2328,34 +1356,4 @@ EventHandler::ActionList EventHandler::ourMenuActionList[kMenuActionListSize] = 
   { Event::UINavNext,   "Next object",          "", false },
 
   { Event::UIPrevDir,   "Parent directory",     "", false }
-};
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// Used by the Stelladaptor to send absolute axis values
-const Event::Type EventHandler::SA_Axis[2][2] = {
-  { Event::SALeftAxis0Value,  Event::SALeftAxis1Value  },
-  { Event::SARightAxis0Value, Event::SARightAxis1Value }
-};
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// Used by the Stelladaptor to map button presses to joystick or paddles
-//  (driving controllers and boostergrip are considered the same as joysticks)
-const Event::Type EventHandler::SA_Button[2][4] = {
-  { Event::JoystickZeroFire,  Event::JoystickZeroFire9,
-    Event::JoystickZeroFire5, Event::JoystickZeroFire9 },
-  { Event::JoystickOneFire,   Event::JoystickOneFire9,
-    Event::JoystickOneFire5,  Event::JoystickOneFire9  }
-};
-
-// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-// Used by the 2600-daptor to map button presses to keypad keys
-const Event::Type EventHandler::SA_Key[2][12] = {
-  { Event::KeyboardZero1,    Event::KeyboardZero2,  Event::KeyboardZero3,
-    Event::KeyboardZero4,    Event::KeyboardZero5,  Event::KeyboardZero6,
-    Event::KeyboardZero7,    Event::KeyboardZero8,  Event::KeyboardZero9,
-    Event::KeyboardZeroStar, Event::KeyboardZero0,  Event::KeyboardZeroPound },
-  { Event::KeyboardOne1,     Event::KeyboardOne2,   Event::KeyboardOne3,
-    Event::KeyboardOne4,     Event::KeyboardOne5,   Event::KeyboardOne6,
-    Event::KeyboardOne7,     Event::KeyboardOne8,   Event::KeyboardOne9,
-    Event::KeyboardOneStar,  Event::KeyboardOne0,   Event::KeyboardOnePound  }
 };

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,7 +26,8 @@ enum Count: Int8 {
 Ball::Ball(uInt32 collisionMask)
   : myCollisionMaskDisabled(collisionMask),
     myCollisionMaskEnabled(0xFFFF),
-    myIsSuppressed(false)
+    myIsSuppressed(false),
+    myTIA(nullptr)
 {
   reset();
 }
@@ -40,6 +41,7 @@ void Ball::reset()
   myIsEnabledNew = false;
   myIsEnabled = false;
   myIsDelaying = false;
+  myIsVisible = false;
   myHmmClocks = 0;
   myCounter = 0;
   myIsMoving = false;
@@ -49,8 +51,7 @@ void Ball::reset()
   myIsRendering = false;
   myDebugEnabled = false;
   myRenderCounter = 0;
-
-  updateEnabled();
+  myIsEnabled = false;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -62,6 +63,7 @@ void Ball::enabl(uInt8 value)
 
   if (myIsEnabledNew != enabledNewOldValue && !myIsDelaying) {
     myTIA->flushLineCache();
+
     updateEnabled();
   }
 }
@@ -173,9 +175,8 @@ bool Ball::movementTick(uInt32 clock, bool apply)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void Ball::tick(bool isReceivingMclock)
 {
-  collision = (myIsRendering && myRenderCounter >= 0 && myIsEnabled) ?
-    myCollisionMaskEnabled :
-    myCollisionMaskDisabled;
+  myIsVisible = myIsRendering && myRenderCounter >= 0;
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 
   bool starfieldEffect = myIsMoving && isReceivingMclock;
 
@@ -184,7 +185,7 @@ void Ball::tick(bool isReceivingMclock)
     myRenderCounter = Count::renderCounterOffset;
 
     uInt8 starfieldDelta = (myCounter + 160 - myLastMovementTick) % 4;
-    if (starfieldEffect && starfieldDelta == 3 && myWidth < 4) myRenderCounter++;
+    if (starfieldEffect && starfieldDelta == 3 && myWidth < 4) ++myRenderCounter;
 
     switch (starfieldDelta) {
       case 3:
@@ -205,6 +206,13 @@ void Ball::tick(bool isReceivingMclock)
 
   if (++myCounter >= 160)
       myCounter = 0;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+void Ball::nextLine()
+{
+  myIsVisible = myIsRendering && myRenderCounter >= 0;
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -233,6 +241,9 @@ void Ball::shuffleStatus()
 void Ball::updateEnabled()
 {
   myIsEnabled = !myIsSuppressed && (myIsDelaying ? myIsEnabledOld : myIsEnabledNew);
+
+  collision = (myIsVisible && myIsEnabled) ? myCollisionMaskEnabled : myCollisionMaskDisabled;
+  myTIA->scheduleCollisionUpdate();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -277,8 +288,6 @@ bool Ball::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
-
     out.putInt(collision);
     out.putInt(myCollisionMaskDisabled);
     out.putInt(myCollisionMaskEnabled);
@@ -293,6 +302,7 @@ bool Ball::save(Serializer& out) const
     out.putBool(myIsEnabled);
     out.putBool(myIsSuppressed);
     out.putBool(myIsDelaying);
+    out.putBool(myIsVisible);
 
     out.putByte(myHmmClocks);
     out.putByte(myCounter);
@@ -318,9 +328,6 @@ bool Ball::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     collision = in.getInt();
     myCollisionMaskDisabled = in.getInt();
     myCollisionMaskEnabled = in.getInt();
@@ -335,6 +342,7 @@ bool Ball::load(Serializer& in)
     myIsEnabled = in.getBool();
     myIsSuppressed = in.getBool();
     myIsDelaying = in.getBool();
+    myIsVisible = in.getBool();
 
     myHmmClocks = in.getByte();
     myCounter = in.getByte();

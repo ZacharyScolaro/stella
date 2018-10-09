@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -42,7 +42,7 @@ class PropertiesSet
     /**
       Create a properties set object from the specified properties file.
     */
-    PropertiesSet(const string& propsfile);
+    explicit PropertiesSet(const string& propsfile);
 
   public:
     /**
@@ -99,13 +99,6 @@ class PropertiesSet
                          when the program exits
     */
     void insert(const Properties& properties, bool save = true);
-
-    /**
-      Marks the property with the given MD5 as being removed.
-
-      @param md5  The md5 of the property to remove
-    */
-    void removeMD5(const string& md5);
 
     /**
       Prints the contents of the PropertiesSet as a flat file.

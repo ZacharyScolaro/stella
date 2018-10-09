@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,7 +28,7 @@ class Missile : public Serializable
 {
   public:
 
-    Missile(uInt32 collisionMask);
+    explicit Missile(uInt32 collisionMask);
 
   public:
 
@@ -50,7 +50,9 @@ class Missile : public Serializable
 
     bool movementTick(uInt8 clock, uInt8 hclock, bool apply);
 
-    void tick(uInt8 hclock);
+    void tick(uInt8 hclock, bool isReceivingMclock = true);
+
+    void nextLine();
 
     void setColor(uInt8 color);
 
@@ -74,7 +76,6 @@ class Missile : public Serializable
     */
     bool save(Serializer& out) const override;
     bool load(Serializer& in) override;
-    string name() const override { return "TIA_Missile"; }
 
   public:
 
@@ -103,6 +104,7 @@ class Missile : public Serializable
     uInt8 myLastMovementTick;
 
     bool myIsRendering;
+    bool myIsVisible;
     Int8 myRenderCounter;
 
     const uInt8* myDecodes;

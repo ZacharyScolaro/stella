@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -106,13 +106,6 @@ class AbstractFrameManager : public Serializable
      * The configured (our autodetected) frame layout (PAL / NTSC).
      */
     FrameLayout layout() const { return myLayout; }
-
-    /**
-     * The current frame rate. This is calculated dynamically from the number of
-     * scanlines in the last frames and used to control sleep time in the
-     * dispatch loop.
-     */
-    float frameRate() const { return myFrameRate; }
 
     /**
      * Save state.
@@ -227,12 +220,6 @@ class AbstractFrameManager : public Serializable
      */
     virtual bool onLoad(Serializer& in) { throw runtime_error("cannot be serialized"); }
 
-    /**
-     * This needs to be overriden if state serialization is implemented
-     * (unnecesary in autodetect managers).
-     */
-    string name() const override { throw runtime_error("state serialization is not implemented!"); }
-
   protected:
     // These need to be called in order to drive the frame lifecycle of the
     // emulation.
@@ -288,11 +275,6 @@ class AbstractFrameManager : public Serializable
      * Total frame count.
      */
     uInt32 myTotalFrames;
-
-    /**
-     * Frame rate (see above.)
-     */
-    float myFrameRate;
 
   private:
 

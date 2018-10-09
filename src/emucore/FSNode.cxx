@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,7 +30,7 @@ FilesystemNode::FilesystemNode()
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-FilesystemNode::FilesystemNode(AbstractFSNode *realNode)
+FilesystemNode::FilesystemNode(AbstractFSNodePtr realNode)
   : _realNode(realNode)
 {
 }
@@ -38,15 +38,11 @@ FilesystemNode::FilesystemNode(AbstractFSNode *realNode)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 FilesystemNode::FilesystemNode(const string& p)
 {
-  AbstractFSNode* tmp = nullptr;
-
   // Is this potentially a ZIP archive?
   if(BSPF::containsIgnoreCase(p, ".zip"))
-    tmp = FilesystemNodeFactory::create(p, FilesystemNodeFactory::ZIP);
+    _realNode = FilesystemNodeFactory::create(p, FilesystemNodeFactory::ZIP);
   else
-    tmp = FilesystemNodeFactory::create(p, FilesystemNodeFactory::SYSTEM);
-
-  _realNode = shared_ptr<AbstractFSNode>(tmp);
+    _realNode = FilesystemNodeFactory::create(p, FilesystemNodeFactory::SYSTEM);
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -132,7 +128,7 @@ FilesystemNode FilesystemNode::getParent() const
   if (_realNode == nullptr)
     return *this;
 
-  AbstractFSNode* node = _realNode->getParent();
+  AbstractFSNodePtr node = _realNode->getParent();
   return node ? FilesystemNode(node) : *this;
 }
 

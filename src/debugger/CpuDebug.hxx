@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -33,6 +33,8 @@ class CpuState : public DebuggerState
     int PC, SP, PS, A, X, Y;
     int srcS, srcA, srcX, srcY;
     BoolArray PSbits;
+
+    CpuState() : PC(0), SP(0), PS(0), A(0), X(0), Y(0), srcS(0), srcA(0), srcX(0), srcY(0) { }
 };
 
 class CpuDebug : public DebuggerSystem

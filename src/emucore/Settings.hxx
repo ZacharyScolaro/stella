@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -36,7 +36,7 @@ class Settings
     /**
       Create a new settings abstract class
     */
-    Settings(OSystem& osystem);
+    explicit Settings(OSystem& osystem);
     virtual ~Settings() = default;
 
   public:
@@ -98,7 +98,7 @@ class Settings
     virtual void saveConfig();
 
     // Trim leading and following whitespace from a string
-    static string trim(string& str)
+    static string trim(const string& str)
     {
       string::size_type first = str.find_first_not_of(' ');
       return (first == string::npos) ? EmptyString :

@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -26,21 +26,19 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font,
   bool leftport = isLeftPort();
   const string& label = getHeader();
 
-  const int fontWidth  = font.getMaxCharWidth(),
-            fontHeight = font.getFontHeight(),
+  const int fontHeight = font.getFontHeight(),
             lineHeight = font.getLineHeight();
   int xpos = x, ypos = y, lwidth = font.getStringWidth("Right (Paddles)");
 
   new StaticTextWidget(boss, font, xpos, ypos+2, lwidth,
-                       fontHeight, label, TextAlign::Left);
+                       fontHeight, label);
 
   ypos += lineHeight + 20;
   const string& p0string = leftport ? "P0 pot " : "P2 pot ";
   const string& p1string = leftport ? "P1 pot " : "P3 pot ";
-  lwidth = font.getStringWidth("P3 pot: ");
   myP0Resistance =
-    new SliderWidget(boss, font, xpos, ypos, 10*fontWidth, lineHeight,
-                     p0string, lwidth, kP0Changed);
+    new SliderWidget(boss, font, xpos, ypos,
+                     p0string, 0, kP0Changed);
   myP0Resistance->setMinValue(0);
   myP0Resistance->setMaxValue(uInt32(Paddles::MAX_RESISTANCE));
   myP0Resistance->setStepValue(uInt32(Paddles::MAX_RESISTANCE/100));
@@ -53,8 +51,8 @@ PaddleWidget::PaddleWidget(GuiObject* boss, const GUI::Font& font,
 
   xpos = x;  ypos += 2*lineHeight;
   myP1Resistance =
-    new SliderWidget(boss, font, xpos, ypos, 10*fontWidth, lineHeight,
-                     p1string, lwidth, kP1Changed);
+    new SliderWidget(boss, font, xpos, ypos,
+                     p1string, 0, kP1Changed);
   myP1Resistance->setMinValue(0);
   myP1Resistance->setMaxValue(uInt32(Paddles::MAX_RESISTANCE));
   myP1Resistance->setStepValue(uInt32(Paddles::MAX_RESISTANCE/100));

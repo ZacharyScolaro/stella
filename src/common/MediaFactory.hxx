@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -49,6 +49,8 @@
 #else
   #include "SoundNull.hxx"
 #endif
+
+class AudioSettings;
 
 /**
   This class deals with the different framebuffer/sound/event
@@ -108,10 +110,10 @@ class MediaFactory
       return make_unique<FrameBufferSDL2>(osystem);
     }
 
-    static unique_ptr<Sound> createAudio(OSystem& osystem)
+    static unique_ptr<Sound> createAudio(OSystem& osystem, AudioSettings& audioSettings)
     {
     #ifdef SOUND_SUPPORT
-      return make_unique<SoundSDL2>(osystem);
+      return make_unique<SoundSDL2>(osystem, audioSettings);
     #else
       return make_unique<SoundNull>(osystem);
     #endif

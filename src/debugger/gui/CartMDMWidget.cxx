@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -31,7 +31,7 @@ CartridgeMDMWidget::CartridgeMDMWidget(
 
   ostringstream info;
   info << "Menu Driven Megacart, containing up to 128 4K banks\n"
-       << "Startup bank = " << cart.myStartBank << "\n"
+       << "Startup bank = " << cart.startBank() << "\n"
        << "\nBanks are selected by reading from $800 - $BFF, where the lower "
           "byte determines the 4K bank to use.";
 

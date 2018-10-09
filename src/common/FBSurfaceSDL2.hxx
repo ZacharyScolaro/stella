@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -38,7 +38,7 @@ class FBSurfaceSDL2 : public FBSurface
     // Most of the surface drawing primitives are implemented in FBSurface;
     // the ones implemented here use SDL-specific code for extra performance
     //
-    void fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, uInt32 color) override;
+    void fillRect(uInt32 x, uInt32 y, uInt32 w, uInt32 h, ColorId color) override;
     // With hardware surfaces, it's faster to just update the entire surface
     void setDirty() override { mySurfaceIsDirty = true; }
 
@@ -88,8 +88,8 @@ class FBSurfaceSDL2 : public FBSurface
     bool myBlendEnabled;  // Blending is enabled
     uInt8 myBlendAlpha;   // Alpha to use in blending mode
 
-    uInt32* myStaticData; // The data to use when the buffer contents are static
-    uInt32 myStaticPitch; // The number of bytes in a row of static data
+    unique_ptr<uInt32[]> myStaticData; // The data to use when the buffer contents are static
+    uInt32 myStaticPitch;              // The number of bytes in a row of static data
 
     GUI::Rect mySrcGUIR, myDstGUIR;
 };

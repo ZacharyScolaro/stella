@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -28,8 +28,8 @@ Paddles::Paddles(Jack jack, const Event& event, const System& system,
 {
   // We must start with minimum resistance; see commit
   // 38b452e1a047a0dca38c5bcce7c271d40f76736e for more information
-  updateAnalogPin(Five, minimumResistance);
-  updateAnalogPin(Nine, minimumResistance);
+  updateAnalogPin(Five, MIN_RESISTANCE);
+  updateAnalogPin(Nine, MIN_RESISTANCE);
 
   // The following logic reflects that mapping paddles to different
   // devices can be extremely complex

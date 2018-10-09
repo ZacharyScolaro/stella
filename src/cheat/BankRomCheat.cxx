@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -29,8 +29,8 @@ BankRomCheat::BankRomCheat(OSystem& os, const string& name, const string& code)
 
   bank = unhex(myCode.substr(0, 2));
   address = 0xf000 + unhex(myCode.substr(2, 3));
-  value = unhex(myCode.substr(5, 2));
-  count = unhex(myCode.substr(7, 1)) + 1;
+  value = uInt8(unhex(myCode.substr(5, 2)));
+  count = uInt8(unhex(myCode.substr(7, 1)) + 1);
 
   // Back up original data; we need this if the cheat is ever disabled
   for(int i = 0; i < count; ++i)

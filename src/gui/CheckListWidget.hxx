@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -37,12 +37,15 @@ class CheckListWidget : public ListWidget
                     int x, int y, int w, int h);
     virtual ~CheckListWidget() = default;
 
-    void setStyle(CheckStyle style);
     void setList(const StringList& list, const BoolArray& state);
     void setLine(int line, const string& str, const bool& state);
 
     bool getState(int line);
     bool getSelectedState() { return getState(_selectedItem); }
+
+  protected:
+    void handleMouseEntered() override;
+    void handleMouseLeft() override;
 
   private:
     bool handleEvent(Event::Type e) override;

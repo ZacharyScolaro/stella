@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -35,7 +35,7 @@ CartridgeFA2Widget::CartridgeFA2Widget(
        << "256 bytes RAM @ $F000 - $F1FF\n"
        << "  $F100 - $F1FF (R), $F000 - $F0FF (W)\n"
        << "RAM can be loaded/saved to Harmony flash by accessing $FFF4\n"
-       << "Startup bank = " << cart.myStartBank << " or undetermined\n";
+       << "Startup bank = " << cart.startBank() << " or undetermined\n";
 
   // Eventually, we should query this from the debugger/disassembler
   for(uInt32 i = 0, offset = 0xFFC, spot = 0xFF5; i < cart.bankCount();
@@ -102,16 +102,16 @@ void CartridgeFA2Widget::saveOldState()
 {
   myOldState.internalram.clear();
 
-  for(uInt32 i = 0; i < this->internalRamSize();i++)
-  {
+  for(uInt32 i = 0; i < internalRamSize(); ++i)
     myOldState.internalram.push_back(myCart.myRAM[i]);
-  }
+
+  myOldState.bank = myCart.getBank();
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeFA2Widget::loadConfig()
 {
-  myBank->setSelectedIndex(myCart.getBank());
+  myBank->setSelectedIndex(myCart.getBank(), myCart.getBank() != myOldState.bank);
 
   CartDebugWidget::loadConfig();
 }

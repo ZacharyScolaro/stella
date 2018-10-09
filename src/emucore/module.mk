@@ -2,6 +2,7 @@ MODULE := src/emucore
 
 MODULE_OBJS := \
 	src/emucore/AtariVox.o \
+	src/emucore/Bankswitch.o \
 	src/emucore/Booster.o \
 	src/emucore/Cart.o \
 	src/emucore/CartDetector.o \
@@ -51,9 +52,11 @@ MODULE_OBJS := \
 	src/emucore/CompuMate.o \
 	src/emucore/Console.o \
 	src/emucore/Control.o \
+	src/emucore/DispatchResult.o \
 	src/emucore/Driving.o \
 	src/emucore/EventHandler.o \
-	src/emucore/EventJoyHandler.o \
+	src/emucore/EmulationTiming.o \
+	src/emucore/EmulationWorker.o \
 	src/emucore/FrameBuffer.o \
 	src/emucore/FBSurface.o \
 	src/emucore/FSNode.o \
@@ -76,7 +79,6 @@ MODULE_OBJS := \
 	src/emucore/Settings.o \
 	src/emucore/Switches.o \
 	src/emucore/System.o \
-	src/emucore/TIASnd.o \
 	src/emucore/TIASurface.o \
 	src/emucore/Thumbulator.o
 

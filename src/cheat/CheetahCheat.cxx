@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -25,8 +25,8 @@ CheetahCheat::CheetahCheat(OSystem& os, const string& name, const string& code)
   : Cheat(os, name, code)
 {
   address = 0xf000 + unhex(code.substr(0, 3));
-  value = unhex(code.substr(3, 2));
-  count = unhex(code.substr(5, 1)) + 1;
+  value = uInt8(unhex(code.substr(3, 2)));
+  count = uInt8(unhex(code.substr(5, 1)) + 1);
 
   // Back up original data; we need this if the cheat is ever disabled
   for(int i = 0; i < count; ++i)

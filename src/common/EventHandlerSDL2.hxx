@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -20,6 +20,7 @@
 
 #include "SDL_lib.hxx"
 #include "EventHandler.hxx"
+#include "PhysicalJoystick.hxx"
 
 /**
   This class handles event collection from the point of view of the specific
@@ -34,7 +35,7 @@ class EventHandlerSDL2 : public EventHandler
     /**
       Create a new SDL2 event handler object
     */
-    EventHandlerSDL2(OSystem& osystem);
+    explicit EventHandlerSDL2(OSystem& osystem);
     virtual ~EventHandlerSDL2() = default;
 
   private:
@@ -44,13 +45,6 @@ class EventHandlerSDL2 : public EventHandler
     void enableTextEvents(bool enable) override;
 
     /**
-      Returns the human-readable name for a StellaKey.
-    */
-    const char* const nameForKey(StellaKey key) const override {
-      return SDL_GetScancodeName(SDL_Scancode(key));
-    }
-
-    /**
       Collects and dispatches any pending SDL2 events.
     */
     void pollEvent() override;
@@ -58,12 +52,12 @@ class EventHandlerSDL2 : public EventHandler
   private:
     SDL_Event myEvent;
 
-    // A thin wrapper around a basic StellaJoystick, holding the pointer to
-    // the underlying SDL stick.
-    class JoystickSDL2 : public StellaJoystick
+    // A thin wrapper around a basic PhysicalJoystick, holding the pointer to
+    // the underlying SDL joystick device.
+    class JoystickSDL2 : public PhysicalJoystick
     {
       public:
-        JoystickSDL2(int idx);
+        explicit JoystickSDL2(int idx);
         virtual ~JoystickSDL2();
 
       private:

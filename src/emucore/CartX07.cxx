@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -29,16 +29,15 @@ CartridgeX07::CartridgeX07(const BytePtr& image, uInt32 size,
   // Copy the ROM image into my buffer
   memcpy(myImage, image.get(), std::min(65536u, size));
   createCodeAccessBase(65536);
-
-  // Remember startup bank
-  myStartBank = 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartridgeX07::reset()
 {
+  initializeStartBank();
+
   // Upon reset we switch to the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -54,7 +53,7 @@ void CartridgeX07::install(System& system)
     mySystem->setPageAccess(addr, access);
 
   // Install pages for the startup bank
-  bank(myStartBank);
+  bank(startBank());
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -155,7 +154,6 @@ bool CartridgeX07::save(Serializer& out) const
 {
   try
   {
-    out.putString(name());
     out.putShort(myCurrentBank);
   }
   catch(...)
@@ -172,9 +170,6 @@ bool CartridgeX07::load(Serializer& in)
 {
   try
   {
-    if(in.getString() != name())
-      return false;
-
     myCurrentBank = in.getShort();
   }
   catch(...)

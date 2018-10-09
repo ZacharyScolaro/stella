@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -30,27 +30,26 @@ class PaddleReader : public Serializable
 
   public:
 
-    void reset(double timestamp);
+    void reset(uInt64 timestamp);
 
-    void vblank(uInt8 value, double timestamp);
+    void vblank(uInt8 value, uInt64 timestamp);
     bool vblankDumped() const { return myIsDumped; }
 
-    uInt8 inpt(double timestamp);
+    uInt8 inpt(uInt64 timestamp);
 
-    void update(double value, double timestamp, ConsoleTiming consoleTiming);
+    void update(double value, uInt64 timestamp, ConsoleTiming consoleTiming);
 
     /**
       Serializable methods (see that class for more information).
     */
     bool save(Serializer& out) const override;
     bool load(Serializer& in) override;
-    string name() const override { return "TIA_PaddleReader"; }
 
   private:
 
     void setConsoleTiming(ConsoleTiming timing);
 
-    void updateCharge(double timestamp);
+    void updateCharge(uInt64 timestamp);
 
   private:
 
@@ -58,7 +57,7 @@ class PaddleReader : public Serializable
     double myU;
 
     double myValue;
-    double myTimestamp;
+    uInt64 myTimestamp;
 
     ConsoleTiming myConsoleTiming;
     double myClockFreq;

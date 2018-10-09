@@ -8,7 +8,7 @@
 //  SS  SS   tt   ee      ll   ll  aa  aa
 //   SSSS     ttt  eeeee llll llll  aaaaa
 //
-// Copyright (c) 1995-2017 by Bradford W. Mott, Stephen Anthony
+// Copyright (c) 1995-2018 by Bradford W. Mott, Stephen Anthony
 // and the Stella Team
 //
 // See the file "License.txt" for information on usage and redistribution of
@@ -66,8 +66,10 @@ class ToggleWidget : public Widget, public CommandSender
     void drawWidget(bool hilite) override = 0;
     int findItem(int x, int y);
 
-    void handleMouseDown(int x, int y, int button, int clickCount) override;
-    void handleMouseUp(int x, int y, int button, int clickCount) override;
+    void handleMouseDown(int x, int y, MouseButton b, int clickCount) override;
+    void handleMouseUp(int x, int y, MouseButton b, int clickCount) override;
+    void handleMouseEntered() override;
+    void handleMouseLeft() override;
     bool handleKeyDown(StellaKey key, StellaMod mod) override;
     void handleCommand(CommandSender* sender, int cmd, int data, int id) override;
 
