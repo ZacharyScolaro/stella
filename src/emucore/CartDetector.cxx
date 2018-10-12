@@ -59,6 +59,7 @@
 #include "CartUA.hxx"
 #include "CartWD.hxx"
 #include "CartX07.hxx"
+#include "CartStrongArmDev.hxx"
 #include "MD5.hxx"
 #include "Props.hxx"
 #include "Settings.hxx"
@@ -71,7 +72,7 @@ unique_ptr<Cartridge> CartDetector::create(const FilesystemNode& file,
     const string& propertiesType, const OSystem& osystem)
 {
   unique_ptr<Cartridge> cartridge;
-  Bankswitch::Type type = Bankswitch::nameToType(propertiesType),
+  Bankswitch::Type type = Bankswitch::Type::_StrongArmDev, // Bankswitch::nameToType(propertiesType),
          detectedType = type;
   string id;
 
@@ -329,6 +330,8 @@ CartDetector::createFromImage(const BytePtr& image, uInt32 size, Bankswitch::Typ
       return make_unique<CartridgeWD>(image, size, osystem.settings());
     case Bankswitch::Type::_X07:
       return make_unique<CartridgeX07>(image, size, osystem.settings());
+	 case Bankswitch::Type::_StrongArmDev:
+		 return make_unique<CartStrongArmDev>(image, size, osystem.settings());
     default:
       return nullptr;  // The remaining types have already been handled
   }

@@ -111,19 +111,19 @@ int main(int argc, char* argv[])
   // If not, use the built-in ROM launcher.  In this case, we enter 'launcher'
   //   mode and let the main event loop take care of opening a new console/ROM.
   FilesystemNode romnode(romfile);
-  if(romfile == "" || romnode.isDirectory())
-  {
-    theOSystem->logMessage("Attempting to use ROM launcher ...", 2);
-    bool launcherOpened = romfile != "" ?
-      theOSystem->createLauncher(romnode.getPath()) : theOSystem->createLauncher();
-    if(!launcherOpened)
-    {
-      theOSystem->logMessage("Launcher could not be started, showing usage", 2);
-      theOSystem->settings().usage();
-      return Cleanup();
-    }
-  }
-  else
+  ////if(romfile == "" || romnode.isDirectory())
+  ////{
+  ////  theOSystem->logMessage("Attempting to use ROM launcher ...", 2);
+  ////  bool launcherOpened = romfile != "" ?
+  ////    theOSystem->createLauncher(romnode.getPath()) : theOSystem->createLauncher();
+  ////  if(!launcherOpened)
+  ////  {
+  ////    theOSystem->logMessage("Launcher could not be started, showing usage", 2);
+  ////    theOSystem->settings().usage();
+  ////    return Cleanup();
+  ////  }
+  ////}
+  ////else
   {
     try
     {

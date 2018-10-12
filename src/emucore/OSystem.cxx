@@ -451,7 +451,7 @@ unique_ptr<Console> OSystem::openConsole(const FilesystemNode& romfile, string& 
   // Open the cartridge image and read it in
   BytePtr image;
   uInt32 size  = 0;
-  if((image = openROM(romfile, md5, size)) != nullptr)
+  ////if((image = openROM(romfile, md5, size)) != nullptr)
   {
     // Get a valid set of properties, including any entered on the commandline
     // For initial creation of the Cart, we're only concerned with the BS type

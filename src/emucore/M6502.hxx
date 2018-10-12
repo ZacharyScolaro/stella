@@ -364,6 +364,8 @@ class M6502 : public Serializable
 
     uInt8 icycles; // cycles of last instruction
 
+	 uInt16 nextJumpTarget; // Next place to hand over control to StrongArm
+
     /// Indicates the numer of distinct memory accesses
     uInt32 myNumberOfDistinctAccesses;
 

@@ -55,6 +55,12 @@
     <Filter Include="Source Files\emucore\tia">
       <UniqueIdentifier>{ffa3642d-aa8a-43a5-8ac5-acd8878dd091}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\game">
+      <UniqueIdentifier>{dc626463-ae35-48fb-80fe-b25dac7b276d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\displayKernels">
+      <UniqueIdentifier>{13dd7596-19d4-4899-bc06-6dcbc391a33c}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\audio">
       <UniqueIdentifier>{49d8ea64-20c1-45f1-9dc9-b39c17d7cabd}</UniqueIdentifier>
     </Filter>
@@ -872,6 +878,24 @@
     </ClCompile>
     <ClCompile Include="..\gui\TimeMachineDialog.cxx">
       <Filter>Source Files\gui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartStrongArmDev.cxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.cpp">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.cpp">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.cpp">
+      <Filter>Source Files\displayKernels</Filter>
     </ClCompile>
     <ClCompile Include="..\emucore\tia\frame-manager\AbstractFrameManager.cxx">
       <Filter>Source Files\emucore\tia</Filter>
@@ -1846,6 +1870,30 @@
     </ClInclude>
     <ClInclude Include="..\gui\TimeMachine.hxx">
       <Filter>Header Files\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\assets.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\gorillaForce.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcs.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\vcsLib.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartStrongArmDev.hxx">
+      <Filter>Source Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\displayKernel.h">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\Bitmap128.h">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\RunAndGun.h">
+      <Filter>Source Files\displayKernels</Filter>
     </ClInclude>
     <ClInclude Include="..\gui\TimeMachineDialog.hxx">
       <Filter>Header Files\gui</Filter>

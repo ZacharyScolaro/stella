@@ -192,8 +192,8 @@ Console::Console(OSystem& osystem, unique_ptr<Cartridge>& cart,
   bool joyallow4 = myOSystem.settings().getBool("joyallow4");
   myOSystem.eventHandler().allowAllDirections(joyallow4);
 
-  // Reset the system to its power-on state
-  mySystem->reset();
+  ////// Reset the system to its power-on state
+  ////mySystem->reset();
 
   // Finally, add remaining info about the console
   myConsoleInfo.CartName   = myProperties.get(Cartridge_Name);
@@ -265,25 +265,24 @@ void Console::redetectFrameLayout()
 void Console::autodetectYStart(bool reset)
 {
   // We turn off the SuperCharger progress bars, otherwise the SC BIOS
-  // will take over 250 frames!
-  // The 'fastscbios' option must be changed before the system is reset
-  bool fastscbios = myOSystem.settings().getBool("fastscbios");
-  myOSystem.settings().setValue("fastscbios", true);
+  ////// will take over 250 frames!
+  ////// The 'fastscbios' option must be changed before the system is reset
+  ////bool fastscbios = myOSystem.settings().getBool("fastscbios");
+  ////myOSystem.settings().setValue("fastscbios", true);
 
-  YStartDetector ystartDetector;
-  ystartDetector.setLayout(myDisplayFormat == "PAL" ? FrameLayout::pal : FrameLayout::ntsc);
-  myTIA->setFrameManager(&ystartDetector);
+  ////YStartDetector ystartDetector;
+  ////ystartDetector.setLayout(myDisplayFormat == "PAL" ? FrameLayout::pal : FrameLayout::ntsc);
+  ////myTIA->setFrameManager(&ystartDetector);
+  ////mySystem->reset(true);
 
-  if (reset) mySystem->reset(true);
-
-  for (int i = 0; i < 80; i++) myTIA->update();
+  ////for (int i = 0; i < 80; i++) myTIA->update();
 
   myTIA->setFrameManager(myFrameManager.get());
 
-  myAutodetectedYstart = ystartDetector.detectedYStart() - YSTART_EXTRA;
+  myAutodetectedYstart = 24; // ystartDetector.detectedYStart() - YSTART_EXTRA;
 
-  // Don't forget to reset the SC progress bars again
-  myOSystem.settings().setValue("fastscbios", fastscbios);
+  ////// Don't forget to reset the SC progress bars again
+  ////myOSystem.settings().setValue("fastscbios", fastscbios);
 
   myYStartAutodetected = true;
 }

@@ -47,6 +47,7 @@
 #include "M6532.hxx"
 #include "System.hxx"
 #include "M6502.hxx"
+#include "CartStrongArmDev.hxx"
 #include "DispatchResult.hxx"
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -90,6 +91,8 @@ void M6502::install(System& system)
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void M6502::reset()
 {
+	nextJumpTarget = 0x1000;
+
   // Clear the execution status flags
   myExecutionStatus = 0;
 
@@ -306,7 +309,20 @@ inline void M6502::_execute(uInt64 cycles, DispatchResult& result)
       // Reset the peek/poke address pointers
       myLastPeekAddress = myLastPokeAddress = myDataAddressForPoke = 0;
 
-      icycles = 0;
+		if (PC < 0x80)
+		{
+			int FAILFAIL = 0;
+		}
+		if (PC == 0x107f)
+		{
+			int y = 9;
+		}
+		if (PC == nextJumpTarget)
+		{
+			nextJumpTarget = RunStrongArmGame();
+		}
+      
+		icycles = 0;
       // Fetch instruction at the program counter
       IR = peek(PC++, DISASM_CODE);  // This address represents a code section
 

@@ -137,6 +137,7 @@ Bankswitch::Description Bankswitch::BSList[int(Bankswitch::Type::NumSchemes)] = 
   { "UA",       "UA (8K UA Ltd.)"               },
   { "WD",       "WD (Experimental)"             },
   { "X07",      "X07 (64K AtariAge)"            },
+  { "StrongArmDev", "Developer Use Only"},
 #ifdef CUSTOM_ARM
   { "CUSTOM",   "CUSTOM (ARM)"                  }
 #endif
@@ -256,5 +257,6 @@ Bankswitch::NameToTypeMap Bankswitch::ourNameToTypes = {
   { "SB",      Bankswitch::Type::_SB     },
   { "UA",      Bankswitch::Type::_UA     },
   { "WD",      Bankswitch::Type::_WD     },
-  { "X07",     Bankswitch::Type::_X07    }
+  { "X07",     Bankswitch::Type::_X07    },
+  {"StrongArmDev", Bankswitch::Type::_StrongArmDev }
 };

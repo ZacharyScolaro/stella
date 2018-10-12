@@ -45,7 +45,7 @@ class Bankswitch
       _DPC,   _DPCP,    _E0,    _E7,     _E78K,   _EF,    _EFSC,
       _F0,    _F4,      _F4SC,  _F6,     _F6SC,   _F8,    _F8SC,
       _FA,    _FA2,     _FE,    _MDM,    _SB,     _UA,    _WD,
-      _X07,
+      _X07, _StrongArmDev,
     #ifdef CUSTOM_ARM
       _CUSTOM,
     #endif

@@ -10,3 +10,4 @@ build/
 src/macosx/M6502.ins
 *.dSYM
 .vscode/c_cpp_properties.json
+/Strong-ARM-for-VCS/src/games/
