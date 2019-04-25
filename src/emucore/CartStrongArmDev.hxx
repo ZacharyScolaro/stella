@@ -89,7 +89,8 @@ class CartStrongArmDev : public Cartridge
     */
     bool poke(uInt16 address, uInt8 value) override;
 
-	uInt8 _romHistory[4096];
+	 uInt8 _romHistory[4096];
+	 uInt32 _stuffHistory[4096];
 private:
 	std::thread * _gameThread;
 

@@ -67,6 +67,9 @@
     <Filter Include="Source Files\audio">
       <UniqueIdentifier>{000e4a6b-8cd6-43db-8253-8255c7efa706}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\game\WushuMasters">
+      <UniqueIdentifier>{9449034f-c4f0-4271-ab90-b5d619ef6989}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\common\FrameBufferSDL2.cxx">
@@ -965,6 +968,24 @@
     </ClCompile>
     <ClCompile Include="..\emucore\Bankswitch.cxx">
       <Filter>Source Files\emucore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\TiledSprites.cpp">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\Enemy.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\SoldierEnemy.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\RayCasterDemo\RayCasterDemo.cpp">
+      <Filter>Source Files\game</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\WushuMasters\WM_Assets.c">
+      <Filter>Source Files\game\WushuMasters</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Strong-ARM-for-VCS\src\games\WushuMasters\WushuMasters.c">
+      <Filter>Source Files\game\WushuMasters</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1972,6 +1993,27 @@
     </ClInclude>
     <ClInclude Include="..\emucore\Bankswitch.hxx">
       <Filter>Header Files\emucore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\displayKernels\TiledSprites.h">
+      <Filter>Source Files\displayKernels</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\Enemy.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\Bullet.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\GorillaForce\SoldierEnemy.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\RayCasterDemo\RayCasterDemo.h">
+      <Filter>Source Files\game</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\WushuMasters\WM_Assets.h">
+      <Filter>Source Files\game\WushuMasters</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Strong-ARM-for-VCS\src\games\WushuMasters\WushuMasters.h">
+      <Filter>Source Files\game\WushuMasters</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

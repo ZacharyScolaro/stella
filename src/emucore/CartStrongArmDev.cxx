@@ -4,6 +4,8 @@
 #include "CartStrongArmDev.hxx"
 #include <atomic>
 #include "games/GorillaForce/gorillaForce.h"
+#include "games/RayCasterDemo/RayCasterDemo.h"
+#include "games/WushuMasters/WushuMasters.h"
 #include "vcsLib.h"
 
 #include <thread>
@@ -14,6 +16,7 @@ static std::mutex m;
 static std::condition_variable cv;
 static uInt8 lastReadValue = 0xff;
 static uInt16 nextRomIndex;
+static uInt16 nextStuffIndex;
 static uInt16 nextJumpTarget;
 static CartStrongArmDev * _cart;
 static bool _runGame;
@@ -22,12 +25,14 @@ static bool _runEmulator;
 static void startGame()
 {
 	vcsJmp3();
-	gorillaForce();
+	//rayCasterDemo();
+	wushuMasters();
 }
 
 
 uInt16 RunStrongArmGame()
 {
+	nextStuffIndex = 0;
 	nextRomIndex = nextJumpTarget & 0xfff;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
@@ -48,15 +53,22 @@ CartStrongArmDev::CartStrongArmDev(const BytePtr& image, uInt32 size,
 
 	// Start filling in ROM at 0x1000
 	nextRomIndex = 0;
+	nextStuffIndex = 0;
 	// Set Reset vector to 0x1000
 	_cart->_romHistory[0xffc] = (0x00);
 	_cart->_romHistory[0xffd] = (0x10);
+
+	for (int i = 0; i < 4096; i++)
+	{
+		_stuffHistory[i] = 0;
+	}
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 void CartStrongArmDev::reset()
 {
 	_gameThread = new std::thread(startGame);
+	nextStuffIndex = 0;
 }
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -71,10 +83,11 @@ void CartStrongArmDev::install(System& system)
     mySystem->setPageAccess(addr, access);
 }
 
+static uInt16 lastPeekAddress;
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 uInt8 CartStrongArmDev::peek(uInt16 address)
 {
-  address &= 0x1FFF;
+	lastPeekAddress = address &= 0x1FFF;
 
   uInt8 value = 0;
 
@@ -95,10 +108,18 @@ uInt8 CartStrongArmDev::peek(uInt16 address)
   return value;
 }
 
+static int stuffCount;
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 bool CartStrongArmDev::poke(uInt16 address, uInt8 value)
 {
   address &= 0x1FFF;
+
+  if ((nextStuffIndex < stuffCount) && ((_stuffHistory[nextStuffIndex] >> 16) == lastPeekAddress))
+  {
+	  value = _stuffHistory[nextStuffIndex] & 0xff;
+	  nextStuffIndex++;
+
+  }
 
   if ((address & 0x1080) == 0x0)
   {
@@ -115,7 +136,7 @@ bool CartStrongArmDev::poke(uInt16 address, uInt8 value)
 
 bool CartStrongArmDev::patch(uInt16 address, uInt8 value)
 {
-	if (address & 0x1000 == 0x1000)
+	if ((address & 0x1000) == 0x1000)
 	{
 		_romHistory[address & 0x0fff] = value;
 		return true;
@@ -166,6 +187,8 @@ unsigned char vcsRead4(unsigned short address)
 	_cart->_romHistory[nextRomIndex++] = (0xad);
 	_cart->_romHistory[nextRomIndex++] = (address & 0xff);
 	_cart->_romHistory[nextRomIndex++] = (address >> 8);
+	stuffCount = nextStuffIndex;
+	nextStuffIndex = 0;
 	// Wait until stella has executed the Read
 	nextJumpTarget = 0x1000 | nextRomIndex;
 	std::unique_lock<std::mutex> lk(m);
@@ -185,6 +208,8 @@ void vcsJmp3()
 	_cart->_romHistory[nextRomIndex++] = (0x10);
 	nextRomIndex = 0;
 	nextJumpTarget = 0x1000;
+	stuffCount = nextStuffIndex;
+	nextStuffIndex = 0;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
 	_runGame = false;
@@ -207,6 +232,8 @@ void EndOverblank()
 	_cart->_romHistory[0xfff] = (0x00);
 	nextRomIndex = 0;
 	nextJumpTarget = 0x1000;
+	stuffCount = nextStuffIndex;
+	nextStuffIndex = 0;
 	// Wait until stella has executed the JMP
 	std::unique_lock<std::mutex> lk(m);
 	_runGame = false;
@@ -214,6 +241,13 @@ void EndOverblank()
 	cv.notify_one();
 	cv.wait(lk, [] {return _runGame; });
 	lk.unlock();
+}
+
+void vcsWrite3(unsigned char ZP, unsigned char data)
+{
+	_cart->_romHistory[nextRomIndex++] = (0x85);
+	_cart->_stuffHistory[nextStuffIndex++] = ((uInt16)(nextRomIndex | 0x1000) << 16) | (data);
+	_cart->_romHistory[nextRomIndex++] = (ZP);
 }
 
 void vcsWrite5(unsigned char ZP, unsigned char data)
@@ -272,15 +306,22 @@ void vcsTxs2()
 	_cart->_romHistory[nextRomIndex++] = (0x9a);
 }
 
-// TODO JSR
-////void vcsJsr6(unsigned short address, unsigned short target)
-////{
-////	_cart->_romHistory[nextRomIndex++] = (0x20);
-////	_cart->_romHistory[nextRomIndex++] = (target & 0xff);
-////	_cart->_romHistory[nextRomIndex++] = (target >> 8);
-////	nextRomIndex = (target & 0x1fff);
-////	todo switch to emu?
-////}
+void vcsJsr6( unsigned short target)
+{
+	_cart->_romHistory[nextRomIndex++] = (0x20);
+	_cart->_romHistory[nextRomIndex++] = (target & 0xff);
+	_cart->_romHistory[nextRomIndex++] = (target >> 8);
+	nextJumpTarget = target;
+	stuffCount = nextStuffIndex;
+	nextStuffIndex = 0;
+	// Wait until stella has executed the JMP
+	std::unique_lock<std::mutex> lk(m);
+	_runGame = false;
+	_runEmulator = true;
+	cv.notify_one();
+	cv.wait(lk, [] {return _runGame; });
+	lk.unlock();
+}
 
 void vcsNop2()
 {
@@ -295,4 +336,11 @@ void vcsNop2n(int n)
 	{
 		_cart->_romHistory[nextRomIndex++] = (0xea);
 	}
+}
+
+void vcsSetMasks(unsigned char * aMask, unsigned char * xMask, unsigned char * yMask)
+{
+	*aMask = 0;
+	*xMask = 0;
+	*yMask = 0;
 }
