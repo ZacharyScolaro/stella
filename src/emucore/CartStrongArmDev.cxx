@@ -3,9 +3,7 @@
 #include "TIA.hxx"
 #include "CartStrongArmDev.hxx"
 #include <atomic>
-#include "games/GorillaForce/gorillaForce.h"
-#include "games/RayCasterDemo/RayCasterDemo.h"
-#include "games/WushuMasters/WushuMasters.h"
+#include "games/atarigame/atarigame.h"
 #include "vcsLib.h"
 
 #include <thread>
@@ -25,8 +23,7 @@ static bool _runEmulator;
 static void startGame()
 {
 	vcsJmp3();
-	//rayCasterDemo();
-	wushuMasters();
+	atarigame();
 }
 
 
@@ -295,10 +292,24 @@ void vcsStx3(unsigned char ZP)
 	_cart->_romHistory[nextRomIndex++] = (ZP);
 }
 
+void vcsStx4(unsigned char ZP)
+{
+	_cart->_romHistory[nextRomIndex++] = (0x8e);
+	_cart->_romHistory[nextRomIndex++] = (ZP);
+	_cart->_romHistory[nextRomIndex++] = (00);
+}
+
 void vcsSty3(unsigned char ZP)
 {
 	_cart->_romHistory[nextRomIndex++] = (0x84);
 	_cart->_romHistory[nextRomIndex++] = (ZP);
+}
+
+void vcsSty4(unsigned char ZP)
+{
+	_cart->_romHistory[nextRomIndex++] = (0x8C);
+	_cart->_romHistory[nextRomIndex++] = (ZP);
+	_cart->_romHistory[nextRomIndex++] = (00);
 }
 
 void vcsTxs2()
